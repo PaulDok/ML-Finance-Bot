@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "ml-finance-bot"
+version = "0.1.0"
+description = "ML Finance trading bot - project for OTUS course"
+authors = ["Pavel Dokuchaev <mrpauldok@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "ml_finance_bot"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
