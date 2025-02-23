@@ -9,6 +9,8 @@ packages = [{include = "ml_finance_bot"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"
+pydantic = "^2.10.6"
+pydantic-settings = "^2.8.0"
 
 
 [build-system]
