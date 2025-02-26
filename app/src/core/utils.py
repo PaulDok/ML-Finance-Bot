@@ -11,6 +11,8 @@ from src.core import config
 
 logger = logging.getLogger()
 
+CACHED_CONFIG: config.Config = None
+
 # # # # # # # # # # # # # # # #
 # ~ @ # $ = WRAPPERS  = $ # @ ~ #
 # # # # # # # # # # # # # # # #

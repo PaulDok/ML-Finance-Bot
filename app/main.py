@@ -1,7 +1,9 @@
 import logging
+import sys
 
 from src.core import utils
 from src.core.config import Config, get_config
+from streamlit.web import cli as stcli
 
 
 def main() -> None:
@@ -11,8 +13,10 @@ def main() -> None:
     """
     logging.getLogger().setLevel("INFO")
     config = main_launch()
+    utils.CACHED_CONFIG = config
     # launch actual process
-    # TBD
+    sys.argv = ["streamlit", "run", "./src/frontend/landing.py"]
+    sys.exit(stcli.main())
 
 
 def main_launch() -> Config:

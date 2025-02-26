@@ -24,3 +24,12 @@ conda install poetry
 cd app
 poetry install
 ```
+
+# Run interactive UI in browser
+In order to run a Streamlit page after environment is set up, run:
+
+```
+cd app
+python main.py
+```
+This will parse launch parameters from dev_env and launch Streamlit UI in your browser
