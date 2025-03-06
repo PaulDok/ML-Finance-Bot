@@ -5,7 +5,10 @@ from datetime import datetime, timedelta
 from typing import Optional, Union
 
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import yfinance as yf
+from plotly.subplots import make_subplots
 from sqlalchemy import Engine, create_engine
 from src.core import config
 
@@ -340,3 +343,166 @@ def update_tickers_data(
         upload_data_to_sqlite(lack_later_tickers_history, interval)
 
     logger.info("Data in caching DB updated")
+
+
+def get_history(
+    tickers: Union[str, list[str]] = "BTC-USD",
+    start: str = "2024-03-30",
+    end: str = "2024-06-02",
+    interval: str = "1d",
+    update_cache: bool = False,
+) -> pd.DataFrame:
+    """
+    Get history from local cache
+    """
+    # Step 0: update cache if needed
+    if update_cache:
+        update_tickers_data(tickers, start, end, interval)
+
+    logger.info("Getting history from local cache DB...")
+
+    # Form an SQL statement
+    table_name = interval if interval[0].isalpha() else interval[::-1]
+    ticker_filter = (
+        "('" + "', '".join(tickers) + "')"
+        if (type(tickers) is list)
+        else f"('{tickers}')"
+    )
+    select_query = f"""
+    SELECT
+        Date,
+        Ticker,
+        Open,
+        Low,
+        High,
+        Close,
+        Volume
+    FROM {table_name}
+    WHERE 
+        1 = 1
+        AND Ticker IN {ticker_filter}
+    """
+    if start is not None:
+        select_query += f" AND Date >= '{start}'"
+    if end is not None:
+        select_query += f" AND Date <= '{end}'"
+
+    # Run on DB
+    with get_sqlite_connection() as conn:
+        # logger.info(select_query)
+        data = pd.read_sql(select_query, con=conn)
+
+    # Sort by Date
+    data.sort_values(by="Date", ascending=True, inplace=True)
+    logger.info(f"Got history of shape {data.shape}, {data.isna().sum().sum():,d} NaNs")
+
+    return data
+
+
+def draw_figure(
+    data: pd.DataFrame,
+    draw_close: bool = True,
+    draw_volume: bool = True,
+    scale_price: bool = False,
+):
+    """
+    Draw a Plotly Figure with tickers data
+    Close price - line
+    Volume - bar
+    parameters:
+    :data: - pd.DataFrame, containing history
+    :draw_close: - bool, default True - whether to draw Close price line plot
+    :draw_volume: - bool, default True - whether to draw Volume bar plot
+    :scale_price: - bool, default False - whether to Standardize Close price
+    """
+    color_swatch = px.colors.qualitative.Dark24
+
+    # Create Figure with secondary y-axis
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Add traces for each ticker
+    color_idx = 0
+    for ticker in data["Ticker"].unique():
+        ticker_data = data[data["Ticker"] == ticker].reset_index(drop=True)
+
+        if scale_price:
+            # ~StandardScaler
+            close_mean = ticker_data["Close"].mean()
+            close_std = ticker_data["Close"].std()
+            ticker_data["Close"] = (ticker_data["Close"] - close_mean) / close_std
+
+        if draw_close:
+            # Close price scatter plot
+            fig.add_trace(
+                go.Scatter(
+                    x=ticker_data["Date"],
+                    y=ticker_data["Close"],
+                    name=f"{ticker} Close",
+                    marker=dict(color=color_swatch[color_idx]),  # "red"),
+                ),
+                secondary_y=False,
+            )
+            color_idx += 1
+            if color_idx == len(color_swatch):
+                color_idx = 0
+
+        if draw_volume:
+            # Volume bar plot
+            fig.add_trace(
+                go.Bar(
+                    x=ticker_data["Date"],
+                    y=ticker_data["Volume"],
+                    name=f"{ticker} Volume",
+                    marker=dict(color=color_swatch[color_idx]),  # "teal"),
+                ),
+                secondary_y=True,
+            )
+            color_idx += 1
+            if color_idx == len(color_swatch):
+                color_idx = 0
+
+    # Add figure title
+    fig.update_layout(
+        title_text=f"{', '.join(data['Ticker'].unique())}{' - Standard Scaled' if scale_price else ''}"
+    )
+
+    # Set x-axis title
+    fig.update_xaxes(title_text="Timestamp")
+
+    # Set y-axes titles
+    fig.update_yaxes(title_text=f"price", secondary_y=False)
+    fig.update_yaxes(title_text=f"volume", secondary_y=True)
+
+    return fig
+
+
+def get_data_and_draw_figure(
+    tickers: list[str],
+    start: str = "2024-03-30",
+    end: str = "2024-06-02",
+    interval: str = "1d",
+    update_cache: bool = False,
+    draw_close: bool = True,
+    draw_volume: bool = True,
+    scale_price: bool = False,
+):
+    """
+    Get data from local cache (optionally - update), draw Plotly chart and return it
+    """
+    # Get data from DB
+    data = get_history(
+        tickers=tickers,
+        start=start,
+        end=end,
+        interval=interval,
+        update_cache=update_cache,
+    )
+    # Generage chart
+    fig = draw_figure(
+        data=data,
+        draw_close=draw_close,
+        draw_volume=draw_volume,
+        scale_price=scale_price,
+    )
+
+    return fig
