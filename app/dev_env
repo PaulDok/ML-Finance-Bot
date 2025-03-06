@@ -1,0 +1,2 @@
+# In local experiments - better to log to file
+LOG_TO_FILE = true

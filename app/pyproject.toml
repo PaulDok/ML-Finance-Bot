@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "ml-finance-bot"
+version = "0.1.0"
+description = "ML Finance trading bot - project for OTUS course"
+authors = ["Pavel Dokuchaev <mrpauldok@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "ml_finance_bot"}]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.9.7 || >3.9.7,<3.10.0"
+pydantic = "^2.10.6"
+pydantic-settings = "^2.8.0"
+urllib3 = "<2.0"
+numpy = "^1.21.0"
+pandas = "^1.4.3"
+yfinance = "^0.2.54"
+lxml = "^5.3.1"
+sqlalchemy = "^2.0.38"
+streamlit = "^1.42.2"
+plotly = "^6.0.0"
+nbformat = "^5.10.4"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
