@@ -79,6 +79,9 @@ def get_default_tickers() -> list:
     snp500_tickers = pd.read_html(
         "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
     )[0]["Symbol"].to_list()
+    # Add the ones with wrong formatting
+    snp500_tickers += ["BF-B", "BRK-B"]
+    snp500_tickers = [t for t in snp500_tickers if ((t != "BF.B") & (t != "BRK.B"))]
     # Just in case there are duplicates
     snp500_tickers = list(set(snp500_tickers))
     logger.info(
