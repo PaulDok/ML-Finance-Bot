@@ -98,19 +98,29 @@ with st.container(border=True):
         with col6:
             st.slider("MA smoothing period", 0, 30, 3, 1, key="options_draw_ma_slider")
 
+        col1, col2 = st.columns(2)
+        with col1:
+            st.checkbox(
+                label="Draw Waterfall chart", value=True, key="options_draw_waterfall"
+            )
+
     # Display chart
     if len(st.session_state["show_tickers_ms"]) > 0:
-        st.plotly_chart(
-            utils.get_data_and_draw_figure(
-                tickers=st.session_state["show_tickers_ms"],
-                start=st.session_state["show_start_dt"].strftime("%Y-%m-%d"),
-                end=st.session_state["show_end_dt"].strftime("%Y-%m-%d"),
-                interval=st.session_state["show_interval_sb"],
-                update_cache=st.session_state["options_update_cb"],
-                draw_close=st.session_state["options_draw_close_cb"],
-                draw_volume=st.session_state["options_draw_volume_cb"],
-                scale_price=st.session_state["options_scale_price_cb"],
-                draw_ma=st.session_state["options_draw_ma_cb"],
-                ma_smooth_periods=st.session_state["options_draw_ma_slider"],
-            )
+        charts = utils.get_data_and_draw_figure(
+            tickers=st.session_state["show_tickers_ms"],
+            start=st.session_state["show_start_dt"].strftime("%Y-%m-%d"),
+            end=st.session_state["show_end_dt"].strftime("%Y-%m-%d"),
+            interval=st.session_state["show_interval_sb"],
+            update_cache=st.session_state["options_update_cb"],
+            draw_close=st.session_state["options_draw_close_cb"],
+            draw_volume=st.session_state["options_draw_volume_cb"],
+            scale_price=st.session_state["options_scale_price_cb"],
+            draw_ma=st.session_state["options_draw_ma_cb"],
+            ma_smooth_periods=st.session_state["options_draw_ma_slider"],
+            draw_waterfall=st.session_state["options_draw_waterfall"],
         )
+        # Draw main chart
+        st.plotly_chart(charts["main"])
+        # Draw Waterfall
+        if st.session_state["options_draw_waterfall"]:
+            st.plotly_chart(charts["waterfall"])

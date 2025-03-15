@@ -499,9 +499,60 @@ def draw_figure(
     fig.update_yaxes(title_text=f"<b>volume</b>", row=2, col=1)
 
     # Draw range slider
-    # fig.update_layout(xaxis_rangeslider_visible=True)
     fig.update_xaxes(rangeslider={"visible": True}, row=1, col=1)
     fig.update_xaxes(rangeslider={"visible": True}, row=2, col=1)
+    fig.update_xaxes(rangeslider_thickness=0.1)
+
+    # Total height
+    fig.update_layout(height=800)
+
+    return fig
+
+
+def draw_waterfall_chart(
+    data: pd.DataFrame,
+    scale_price: bool = False,
+):
+    """
+    Draw a Plotly Waterfall Figure with tickers data
+    """
+    # Create Figure
+    fig = go.Figure()
+
+    # Add traces for each ticker
+    for ticker in data["Ticker"].unique():
+        ticker_data = data[data["Ticker"] == ticker].reset_index(drop=True)
+
+        if scale_price:
+            # ~StandardScaler
+            close_mean = ticker_data["Close"].mean()
+            close_std = ticker_data["Close"].std()
+            ticker_data["Close"] = (ticker_data["Close"] - close_mean) / close_std
+
+        fig.add_trace(
+            go.Waterfall(
+                name=f"{ticker}",
+                orientation="v",
+                x=ticker_data["Date"],
+                textposition="auto",
+                y=ticker_data["Close"].diff(),
+                text=round(ticker_data["Close"].diff(), 2),
+                connector={"line": {"color": "#b20710"}},
+                increasing={"marker": {"color": "green"}},
+                decreasing={"marker": {"color": "red"}},
+            )
+        )
+
+    # Add figure title
+    fig.update_layout(
+        title_text=f"{', '.join(data['Ticker'].unique())}{' - Standard Scaled' if scale_price else ''} Waterfall"
+    )
+
+    # Set y-axes titles
+    fig.update_yaxes(title_text=f"<b>close price change</b>")
+
+    # Draw range slider
+    fig.update_xaxes(rangeslider={"visible": True})
     fig.update_xaxes(rangeslider_thickness=0.1)
 
     # Total height
@@ -521,6 +572,7 @@ def get_data_and_draw_figure(
     scale_price: bool = False,
     draw_ma: bool = True,
     ma_smooth_periods: int = 3,
+    draw_waterfall: bool = True,
 ):
     """
     Get data from local cache (optionally - update), draw Plotly chart and return it
@@ -542,5 +594,10 @@ def get_data_and_draw_figure(
         draw_ma=draw_ma,
         ma_smooth_periods=ma_smooth_periods,
     )
+    # Generage waterfall chart
+    if draw_waterfall:
+        fig_waterfall = draw_waterfall_chart(data=data, scale_price=scale_price)
+    else:
+        fig_waterfall = None
 
-    return fig
+    return {"main": fig, "waterfall": fig_waterfall}
