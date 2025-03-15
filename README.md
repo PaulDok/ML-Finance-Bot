@@ -17,6 +17,9 @@ conda install ipykernel
 conda install black
 conda install isort
 
+# TA-Lib (TODO: can it be done via poetry?)
+conda install conda-forge::ta-lib
+
 # Poetry for more complex dependency management
 conda install poetry
 

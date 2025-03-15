@@ -7,6 +7,7 @@ from typing import Optional, Union
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import talib
 import yfinance as yf
 from plotly.subplots import make_subplots
 from sqlalchemy import Engine, create_engine
@@ -404,6 +405,8 @@ def draw_figure(
     draw_close: bool = True,
     draw_volume: bool = True,
     scale_price: bool = False,
+    draw_ma: bool = True,
+    ma_smooth_periods: int = 3,
 ):
     """
     Draw a Plotly Figure with tickers data
@@ -418,7 +421,7 @@ def draw_figure(
     color_swatch = px.colors.qualitative.Dark24
 
     # Create Figure with secondary y-axis
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig = make_subplots(rows=2, shared_xaxes=True, row_heights=[0.7, 0.3])
 
     # Add traces for each ticker
     color_idx = 0
@@ -440,11 +443,35 @@ def draw_figure(
                     name=f"{ticker} Close",
                     marker=dict(color=color_swatch[color_idx]),  # "red"),
                 ),
-                secondary_y=False,
+                row=1,
+                col=1,
             )
             color_idx += 1
             if color_idx == len(color_swatch):
                 color_idx = 0
+
+        if draw_ma:
+            # SMA and EMA lines
+            sma = go.Scatter(
+                x=ticker_data["Date"],
+                y=talib.SMA(ticker_data["Close"], ma_smooth_periods),
+                name=f"{ticker} SMA_{ma_smooth_periods}",
+                marker=dict(color=color_swatch[color_idx]),  # "red"),
+            )
+            color_idx += 1
+            if color_idx == len(color_swatch):
+                color_idx = 0
+            ema = go.Scatter(
+                x=ticker_data["Date"],
+                y=talib.EMA(ticker_data["Close"], ma_smooth_periods),
+                name=f"{ticker} EMA_{ma_smooth_periods}",
+                marker=dict(color=color_swatch[color_idx]),  # "red"),
+            )
+            color_idx += 1
+            if color_idx == len(color_swatch):
+                color_idx = 0
+            fig.add_trace(sma, row=1, col=1)
+            fig.add_trace(ema, row=1, col=1)
 
         if draw_volume:
             # Volume bar plot
@@ -455,7 +482,8 @@ def draw_figure(
                     name=f"{ticker} Volume",
                     marker=dict(color=color_swatch[color_idx]),  # "teal"),
                 ),
-                secondary_y=True,
+                row=2,
+                col=1,
             )
             color_idx += 1
             if color_idx == len(color_swatch):
@@ -466,12 +494,18 @@ def draw_figure(
         title_text=f"{', '.join(data['Ticker'].unique())}{' - Standard Scaled' if scale_price else ''}"
     )
 
-    # Set x-axis title
-    fig.update_xaxes(title_text="Timestamp")
-
     # Set y-axes titles
-    fig.update_yaxes(title_text=f"price", secondary_y=False)
-    fig.update_yaxes(title_text=f"volume", secondary_y=True)
+    fig.update_yaxes(title_text=f"<b>price</b>", row=1, col=1)
+    fig.update_yaxes(title_text=f"<b>volume</b>", row=2, col=1)
+
+    # Draw range slider
+    # fig.update_layout(xaxis_rangeslider_visible=True)
+    fig.update_xaxes(rangeslider={"visible": True}, row=1, col=1)
+    fig.update_xaxes(rangeslider={"visible": True}, row=2, col=1)
+    fig.update_xaxes(rangeslider_thickness=0.1)
+
+    # Total height
+    fig.update_layout(height=800)
 
     return fig
 
@@ -485,6 +519,8 @@ def get_data_and_draw_figure(
     draw_close: bool = True,
     draw_volume: bool = True,
     scale_price: bool = False,
+    draw_ma: bool = True,
+    ma_smooth_periods: int = 3,
 ):
     """
     Get data from local cache (optionally - update), draw Plotly chart and return it
@@ -503,6 +539,8 @@ def get_data_and_draw_figure(
         draw_close=draw_close,
         draw_volume=draw_volume,
         scale_price=scale_price,
+        draw_ma=draw_ma,
+        ma_smooth_periods=ma_smooth_periods,
     )
 
     return fig

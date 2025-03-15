@@ -84,7 +84,7 @@ with st.container(border=True):
         expanded=False,
         icon=":material/settings:",
     ):
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
         with col1:
             st.checkbox(label="Update cache", value=False, key="options_update_cb")
         with col2:
@@ -93,6 +93,10 @@ with st.container(border=True):
             st.checkbox(label="Draw Volume", value=True, key="options_draw_volume_cb")
         with col4:
             st.checkbox(label="Scale Price", value=False, key="options_scale_price_cb")
+        with col5:
+            st.checkbox(label="Draw SMA and EMA", value=True, key="options_draw_ma_cb")
+        with col6:
+            st.slider("MA smoothing period", 0, 30, 3, 1, key="options_draw_ma_slider")
 
     # Display chart
     if len(st.session_state["show_tickers_ms"]) > 0:
@@ -106,5 +110,7 @@ with st.container(border=True):
                 draw_close=st.session_state["options_draw_close_cb"],
                 draw_volume=st.session_state["options_draw_volume_cb"],
                 scale_price=st.session_state["options_scale_price_cb"],
+                draw_ma=st.session_state["options_draw_ma_cb"],
+                ma_smooth_periods=st.session_state["options_draw_ma_slider"],
             )
         )
