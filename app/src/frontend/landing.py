@@ -98,10 +98,24 @@ with st.container(border=True):
         with col6:
             st.slider("MA smoothing period", 0, 30, 3, 1, key="options_draw_ma_slider")
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.checkbox(
                 label="Draw Waterfall chart", value=True, key="options_draw_waterfall"
+            )
+        with col2:
+            st.checkbox(
+                label="Draw Stochastic Oscillator chart",
+                value=True,
+                key="options_draw_stochastic",
+            )
+        with col3:
+            st.slider(
+                "Fast_K Stochastic period", 0, 30, 14, 1, key="options_fast_k_slider"
+            )
+        with col4:
+            st.slider(
+                "Slow_D Stochastic period", 0, 30, 3, 1, key="options_slow_d_slider"
             )
 
     # Display chart
@@ -118,9 +132,30 @@ with st.container(border=True):
             draw_ma=st.session_state["options_draw_ma_cb"],
             ma_smooth_periods=st.session_state["options_draw_ma_slider"],
             draw_waterfall=st.session_state["options_draw_waterfall"],
+            draw_stochastic=st.session_state["options_draw_stochastic"],
+            fastk_period=st.session_state["options_fast_k_slider"],
+            slowd_period=st.session_state["options_slow_d_slider"],
         )
+
         # Draw main chart
-        st.plotly_chart(charts["main"])
+        with st.expander(
+            label="Price and Volume chart",
+            expanded=True,
+        ):
+            st.plotly_chart(charts["main"])
+
         # Draw Waterfall
         if st.session_state["options_draw_waterfall"]:
-            st.plotly_chart(charts["waterfall"])
+            with st.expander(
+                label="Waterfall chart",
+                expanded=True,
+            ):
+                st.plotly_chart(charts["waterfall"])
+
+        # Draw Stochastic
+        if st.session_state["options_draw_stochastic"]:
+            with st.expander(
+                label="Stochastic oscillator chart",
+                expanded=True,
+            ):
+                st.plotly_chart(charts["stochastic"])

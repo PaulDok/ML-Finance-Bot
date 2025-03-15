@@ -561,6 +561,113 @@ def draw_waterfall_chart(
     return fig
 
 
+def draw_stochastic_oscillator_chart(
+    data: pd.DataFrame,
+    scale_price: bool = False,
+    fastk_period: int = 14,
+    slowd_period: int = 3,
+):
+    """
+    Draw a Plotly Figure with tickers data and Stochastic oscillators
+    """
+    # Create Figure
+    fig = make_subplots(rows=2, shared_xaxes=True, row_heights=[0.5, 0.5])
+    # fig = go.Figure()
+
+    # Add traces for each ticker
+    for ticker in data["Ticker"].unique():
+        ticker_data = data[data["Ticker"] == ticker].reset_index(drop=True)
+
+        if scale_price:
+            # ~StandardScaler
+            close_mean = ticker_data["Close"].mean()
+            close_std = ticker_data["Close"].std()
+            ticker_data["Close"] = (ticker_data["Close"] - close_mean) / close_std
+            ticker_data["High"] = (ticker_data["High"] - close_mean) / close_std
+            ticker_data["Low"] = (ticker_data["Low"] - close_mean) / close_std
+
+        # Calculate stochastic oscillators
+        stoch_k, stoch_d = talib.STOCH(
+            ticker_data["High"],
+            ticker_data["Low"],
+            ticker_data["Close"],
+            fastk_period=fastk_period,
+            slowd_period=slowd_period,
+        )
+        stoch_k.name = "STOCH_K"
+        stoch_d.name = "STOCH_D"
+        ticker_data = pd.concat([ticker_data, stoch_k, stoch_d], axis=1)
+
+        # Close price
+        fig.add_trace(
+            go.Scatter(
+                x=ticker_data["Date"],
+                y=ticker_data["Close"],
+                name=f"{ticker} Close",
+                line=dict(color="blue"),
+            ),
+            row=1,
+            col=1,
+        )
+
+        # Stochastic oscillator lines
+        fig.add_trace(
+            go.Scatter(
+                x=ticker_data["Date"],
+                y=ticker_data["STOCH_K"],
+                name=f"Slow %K {fastk_period}",
+                line=dict(color="red"),
+            ),
+            row=2,
+            col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=ticker_data["Date"],
+                y=ticker_data["STOCH_D"],
+                name=f"Slow %D {slowd_period}",
+                line=dict(color="green"),
+            ),
+            row=2,
+            col=1,
+        )
+
+        # Overbought / oversold lines
+        fig.add_hline(
+            y=80,
+            line_dash="dot",
+            line_color="gray",
+            annotation_text="Overbought (80)",
+            row=2,
+            col=1,
+        )
+        fig.add_hline(
+            y=20,
+            line_dash="dot",
+            line_color="gray",
+            annotation_text="Oversold (20)",
+            row=2,
+            col=1,
+        )
+
+    # Add figure title
+    fig.update_layout(
+        title_text=f"{', '.join(data['Ticker'].unique())}{' - Standard Scaled' if scale_price else ''} with Stochastic Ostillator"
+    )
+
+    # Set y-axes titles
+    fig.update_yaxes(title_text=f"<b>close price</b>")
+
+    # Draw range slider
+    fig.update_xaxes(rangeslider={"visible": True})
+    fig.update_xaxes(rangeslider_thickness=0.1)
+
+    # Total height
+    fig.update_layout(height=800)
+
+    return fig
+
+
 def get_data_and_draw_figure(
     tickers: list[str],
     start: str = "2024-03-30",
@@ -573,6 +680,9 @@ def get_data_and_draw_figure(
     draw_ma: bool = True,
     ma_smooth_periods: int = 3,
     draw_waterfall: bool = True,
+    draw_stochastic: bool = True,
+    fastk_period: int = 14,
+    slowd_period: int = 3,
 ):
     """
     Get data from local cache (optionally - update), draw Plotly chart and return it
@@ -585,7 +695,8 @@ def get_data_and_draw_figure(
         interval=interval,
         update_cache=update_cache,
     )
-    # Generage chart
+
+    # Generate price & volume chart
     fig = draw_figure(
         data=data,
         draw_close=draw_close,
@@ -594,10 +705,22 @@ def get_data_and_draw_figure(
         draw_ma=draw_ma,
         ma_smooth_periods=ma_smooth_periods,
     )
+
     # Generage waterfall chart
     if draw_waterfall:
         fig_waterfall = draw_waterfall_chart(data=data, scale_price=scale_price)
     else:
         fig_waterfall = None
 
-    return {"main": fig, "waterfall": fig_waterfall}
+    # Generate Stochastic Oscillator chart
+    if draw_stochastic:
+        fig_stochastic = draw_stochastic_oscillator_chart(
+            data=data,
+            scale_price=scale_price,
+            fastk_period=fastk_period,
+            slowd_period=slowd_period,
+        )
+    else:
+        fig_stochastic = None
+
+    return {"main": fig, "waterfall": fig_waterfall, "stochastic": fig_stochastic}
