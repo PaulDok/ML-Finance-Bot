@@ -724,3 +724,68 @@ def get_data_and_draw_figure(
         fig_stochastic = None
 
     return {"main": fig, "waterfall": fig_waterfall, "stochastic": fig_stochastic}
+
+
+def train_test_valid_split(
+    ticker_data: pd.DataFrame,
+    train_start: Optional[str],
+    train_end: str,
+    test_end: str,
+    valid_end: str,
+) -> tuple[
+    pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
+]:
+    """
+    Split ticker data to training, testing and validation datasets
+    """
+    logger.info("Splitting ticker data to train/test/validation parts")
+    # 0. Make sure that Date is ascending. Also reset index
+    ticker_data["Date"] = pd.to_datetime(ticker_data["Date"])
+    ticker_data = ticker_data.sort_values(by=["Date"], ascending=True).reset_index(
+        drop=True
+    )
+
+    # 1. Drop leaky columns
+    for col in ["Ticker", "Open", "Low", "High", "Volume"]:
+        try:
+            ticker_data.drop(columns=col, inplace=True)
+        except:
+            pass
+
+    # 2. Perform train/test/valid split based on 'Date'
+    # we don't need anything after validation end
+    ticker_data = ticker_data[ticker_data["Date"] < valid_end].reset_index(drop=True)
+    # in case train_start is defined - cut it
+    if train_start is not None:
+        ticker_data = ticker_data[ticker_data["Date"] >= train_start].reset_index(
+            drop=True
+        )
+    # Train parts
+    X_train = (
+        ticker_data[ticker_data["Date"] < train_end]
+        .drop(columns=["Close"])
+        .reset_index(drop=True)
+    )
+    y_train = ticker_data[ticker_data["Date"] < train_end]["Close"].reset_index(
+        drop=True
+    )
+    # Test parts
+    X_test = (
+        ticker_data[
+            (ticker_data["Date"] >= train_end) & (ticker_data["Date"] < test_end)
+        ]
+        .drop(columns=["Close"])
+        .reset_index(drop=True)
+    )
+    y_test = ticker_data[
+        (ticker_data["Date"] >= train_end) & (ticker_data["Date"] < test_end)
+    ]["Close"].reset_index(drop=True)
+    # Validation parts
+    X_val = (
+        ticker_data[ticker_data["Date"] >= test_end]
+        .drop(columns=["Close"])
+        .reset_index(drop=True)
+    )
+    y_val = ticker_data[ticker_data["Date"] >= test_end]["Close"].reset_index(drop=True)
+
+    return X_train, y_train, X_test, y_test, X_val, y_val
