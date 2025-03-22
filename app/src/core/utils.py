@@ -732,6 +732,7 @@ def train_test_valid_split(
     train_end: str,
     test_end: str,
     valid_end: str,
+    drop_leaky: bool = True,
 ) -> tuple[
     pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
 ]:
@@ -746,11 +747,16 @@ def train_test_valid_split(
     )
 
     # 1. Drop leaky columns
-    for col in ["Ticker", "Open", "Low", "High", "Volume"]:
-        try:
-            ticker_data.drop(columns=col, inplace=True)
-        except:
-            pass
+    try:
+        ticker_data.drop(columns=["Ticker"], inplace=True)
+    except:
+        pass
+    if drop_leaky:
+        for col in ["Open", "Low", "High", "Volume"]:
+            try:
+                ticker_data.drop(columns=col, inplace=True)
+            except:
+                pass
 
     # 2. Perform train/test/valid split based on 'Date'
     # we don't need anything after validation end
