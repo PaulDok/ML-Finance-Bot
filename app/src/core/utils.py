@@ -795,3 +795,18 @@ def train_test_valid_split(
     y_val = ticker_data[ticker_data["Date"] >= test_end]["Close"].reset_index(drop=True)
 
     return X_train, y_train, X_test, y_test, X_val, y_val
+
+
+def transform_for_backtesting(
+    y_test: pd.DataFrame, X_test: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Transform data after train/test split to the format fit for Backtesing library
+    """
+    bt_df = pd.concat([X_test, y_test], axis=1)
+    # bt_df["Open"] = 0
+    # bt_df["High"] = 0
+    # bt_df["Low"] = 0
+    bt_df["Date"] = pd.to_datetime(bt_df["Date"])
+    bt_df.set_index("Date", inplace=True)
+    return bt_df
