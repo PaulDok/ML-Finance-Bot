@@ -1,4 +1,5 @@
 import gc
+import itertools
 import logging
 import sqlite3
 from datetime import datetime, timedelta
@@ -9,6 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import talib
 import yfinance as yf
+from backtesting import Backtest
 from plotly.subplots import make_subplots
 from sqlalchemy import Engine, create_engine
 from src.core import config
@@ -810,3 +812,97 @@ def transform_for_backtesting(
     bt_df["Date"] = pd.to_datetime(bt_df["Date"])
     bt_df.set_index("Date", inplace=True)
     return bt_df
+
+
+def backtest_strategy(
+    strategy_class, y_test: pd.Series, X_test: pd.DataFrame, strategy_params: dict
+):
+    """
+    Perform a backtest of strategy_class with params on test dataset
+    """
+    # Initialize Backtest object
+    bt = Backtest(
+        transform_for_backtesting(y_test=y_test, X_test=X_test),
+        strategy_class,
+        cash=100000,
+        commission=0.002,
+        exclusive_orders=True,
+    )
+    # Run, using selected Strategy parameters
+    stats = bt.run(**strategy_params)
+    return stats
+
+
+def get_best_strategy_params(
+    strategy_class,
+    y_test: pd.Series,
+    X_test: pd.DataFrame,
+    strategy_params_options: dict,
+    kpi: str = "Return [%]",
+):
+    """
+    Iterate over combinations of strategy_params_options for strategy_class
+    Perform backtesting experiment for each of them, and return best (on "Return [%]") params and performance
+    """
+    # Variables to hold best params
+    best_params = None
+    best_performance = -float("inf")
+
+    for param_option in itertools.product(*strategy_params_options.values()):
+        # Generate strategy params from options
+        strategy_params = dict(zip(strategy_params_options.keys(), param_option))
+        # logger.info(f"Testing with params: {strategy_params}")
+
+        # Perform backtest
+        stats = backtest_strategy(
+            strategy_class,
+            y_test=y_test,
+            X_test=X_test,
+            strategy_params=strategy_params,
+        )
+
+        # Get key performance indicator among all metrics
+        performance = stats[kpi]
+
+        # Check if it's better than others
+        if performance > best_performance:
+            best_performance = performance
+            best_params = strategy_params
+
+    logger.info(f"Best Performance: {best_performance}")
+    logger.info(f"Best Parameters: {best_params}")
+
+    return best_params, best_performance
+
+
+def get_best_strategy(
+    full_strategy_test_list: dict, y_test: pd.Series, X_test: pd.DataFrame
+):
+    # Variables to hold best params
+    best_strategy_class = None
+    best_params = None
+    best_performance = -float("inf")
+
+    for e in full_strategy_test_list:
+        logger.info("= = = = = = = = = = = = = = = = = = = = = = = =")
+        logger.info(f"Searching best params for {e['strategy_type']}...")
+        class_params, class_performance = get_best_strategy_params(
+            e["strategy_class"],
+            y_test=y_test,
+            X_test=X_test,
+            strategy_params_options=e["strategy_params_options"],
+        )
+
+        # Check if it's better than others
+        if class_performance > best_performance:
+            best_performance = class_performance
+            best_params = class_params
+            best_strategy_class = e["strategy_class"]
+
+    logger.info("= = = = = = = = = = = = = = = = = = = = = = = =")
+    logger.info(f"Best Strategy Class: {str(best_strategy_class)}")
+    logger.info(f"Best Performance: {best_performance}")
+    logger.info(f"Best Parameters: {best_params}")
+    logger.info("= = = = = = = = = = = = = = = = = = = = = = = =")
+
+    return best_strategy_class, best_params, best_performance

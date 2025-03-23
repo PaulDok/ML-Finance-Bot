@@ -17,16 +17,18 @@ conda install ipykernel
 conda install black
 conda install isort
 
-# TA-Lib (TODO: can it be done via poetry?)
-conda install conda-forge::ta-lib
-
 # Poetry for more complex dependency management
 conda install poetry
 
 # Install project dependencies
 cd app
 poetry install
+
+# TA-Lib (TODO: can it be done via poetry?)
+conda install conda-forge::ta-lib
 ```
+
+
 
 # Run interactive UI in browser
 In order to run a Streamlit page after environment is set up, run:
