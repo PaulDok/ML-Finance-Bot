@@ -9,6 +9,7 @@ from src.strategy.macd_strategy import MACDStrategy
 from src.strategy.sma_cross_strategy import SmaCross
 from src.strategy.stoch_strategy import STOCHStrategy
 from src.strategy.tema_strategy import TEMAStrategy
+from streamlit_bokeh import streamlit_bokeh
 
 logger = logging.getLogger()
 
@@ -324,9 +325,17 @@ with st.container(border=True):
                         st.write(
                             f"**TEST {st.session_state['backtest_kpi_sb']}: {result['performance_test']}**"
                         )
-                        # st.bokeh_chart(result["fig_test"])
+                        streamlit_bokeh(
+                            result["fig_test"],
+                            use_container_width=True,
+                            key=f"{strategy_type}_test_fig",
+                        )
                     with col_val:
                         st.write(
                             f"**VALIDATION {st.session_state['backtest_kpi_sb']}: {result['performance_val']}**"
                         )
-                        # st.bokeh_chart(result["fig_val"])
+                        streamlit_bokeh(
+                            result["fig_val"],
+                            use_container_width=True,
+                            key=f"{strategy_type}_val_fig",
+                        )
