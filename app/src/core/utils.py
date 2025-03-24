@@ -878,6 +878,9 @@ def get_best_strategy_params(
 def get_best_strategy(
     full_strategy_test_list: dict, y_test: pd.Series, X_test: pd.DataFrame
 ):
+    # A dictionary to return all bests for strategies
+    full_test_summary = {}
+
     # Variables to hold best params
     best_strategy_class = None
     best_params = None
@@ -893,6 +896,12 @@ def get_best_strategy(
             strategy_params_options=e["strategy_params_options"],
         )
 
+        full_test_summary[e["strategy_type"]] = {
+            "strategy_class": e["strategy_class"],
+            "params": class_params,
+            "performance": class_performance,
+        }
+
         # Check if it's better than others
         if class_performance > best_performance:
             best_performance = class_performance
@@ -905,4 +914,4 @@ def get_best_strategy(
     logger.info(f"Best Parameters: {best_params}")
     logger.info("= = = = = = = = = = = = = = = = = = = = = = = =")
 
-    return best_strategy_class, best_params, best_performance
+    return best_strategy_class, best_params, best_performance, full_test_summary
