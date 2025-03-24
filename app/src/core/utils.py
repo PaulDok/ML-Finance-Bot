@@ -830,7 +830,8 @@ def backtest_strategy(
     )
     # Run, using selected Strategy parameters
     stats = bt.run(**strategy_params)
-    return stats
+
+    return stats, bt
 
 
 def get_best_strategy_params(
@@ -847,6 +848,7 @@ def get_best_strategy_params(
     # Variables to hold best params
     best_params = None
     best_performance = -float("inf")
+    best_fig = None
 
     for param_option in itertools.product(*strategy_params_options.values()):
         # Generate strategy params from options
@@ -854,7 +856,7 @@ def get_best_strategy_params(
         # logger.info(f"Testing with params: {strategy_params}")
 
         # Perform backtest
-        stats = backtest_strategy(
+        stats, bt = backtest_strategy(
             strategy_class,
             y_test=y_test,
             X_test=X_test,
@@ -868,15 +870,20 @@ def get_best_strategy_params(
         if performance > best_performance:
             best_performance = performance
             best_params = strategy_params
+            # Create a Bokeh figure
+            best_fig = bt.plot(superimpose=False, open_browser=False)
 
     logger.info(f"Best Performance: {best_performance}")
     logger.info(f"Best Parameters: {best_params}")
 
-    return best_params, best_performance
+    return best_params, best_performance, best_fig
 
 
 def get_best_strategy(
-    full_strategy_test_list: dict, y_test: pd.Series, X_test: pd.DataFrame
+    full_strategy_test_list: dict,
+    y_test: pd.Series,
+    X_test: pd.DataFrame,
+    kpi: str = "Return [%]",
 ):
     # A dictionary to return all bests for strategies
     full_test_summary = {}
@@ -889,17 +896,19 @@ def get_best_strategy(
     for e in full_strategy_test_list:
         logger.info("= = = = = = = = = = = = = = = = = = = = = = = =")
         logger.info(f"Searching best params for {e['strategy_type']}...")
-        class_params, class_performance = get_best_strategy_params(
+        class_params, class_performance, class_test_fig = get_best_strategy_params(
             e["strategy_class"],
             y_test=y_test,
             X_test=X_test,
             strategy_params_options=e["strategy_params_options"],
+            kpi=kpi,
         )
 
         full_test_summary[e["strategy_type"]] = {
             "strategy_class": e["strategy_class"],
             "params": class_params,
             "performance": class_performance,
+            "test_fig": class_test_fig,
         }
 
         # Check if it's better than others
@@ -915,3 +924,38 @@ def get_best_strategy(
     logger.info("= = = = = = = = = = = = = = = = = = = = = = = =")
 
     return best_strategy_class, best_params, best_performance, full_test_summary
+
+
+def validate_model_performances(
+    y_val: pd.Series,
+    X_val: pd.DataFrame,
+    full_test_summary: dict,
+    kpi: str = "Return[%]",
+):
+    """
+    Validate best model hyperparameters (base on Test dataset) on Validation dataset
+    """
+    result = {}
+    for strategy_type, strategy_test_result in full_test_summary.items():
+        logger.info(f"Validating {strategy_type}...")
+        # Perform a Backtest on Validation dataset
+        bt = Backtest(
+            transform_for_backtesting(y_val, X_val),
+            strategy_test_result["strategy_class"],
+            cash=100000,
+            commission=0.002,
+            exclusive_orders=True,
+        )
+        stats = bt.run(**strategy_test_result["params"])
+        val_kpi = stats[kpi]
+        logger.info(
+            f"{kpi}: TEST - {strategy_test_result['performance']} | VAL - {val_kpi}"
+        )
+
+        # Create a Bokeh figure
+        fig = bt.plot(superimpose=False, open_browser=False)
+
+        # Save to output
+        result[strategy_type] = {"val_performance": val_kpi, "val_figure": fig}
+
+    return result
