@@ -1,4 +1,5 @@
 import gc
+import itertools
 import logging
 import sqlite3
 from datetime import datetime, timedelta
@@ -7,7 +8,9 @@ from typing import Optional, Union
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import talib
 import yfinance as yf
+from backtesting import Backtest
 from plotly.subplots import make_subplots
 from sqlalchemy import Engine, create_engine
 from src.core import config
@@ -404,6 +407,8 @@ def draw_figure(
     draw_close: bool = True,
     draw_volume: bool = True,
     scale_price: bool = False,
+    draw_ma: bool = True,
+    ma_smooth_periods: int = 3,
 ):
     """
     Draw a Plotly Figure with tickers data
@@ -418,7 +423,7 @@ def draw_figure(
     color_swatch = px.colors.qualitative.Dark24
 
     # Create Figure with secondary y-axis
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig = make_subplots(rows=2, shared_xaxes=True, row_heights=[0.7, 0.3])
 
     # Add traces for each ticker
     color_idx = 0
@@ -440,11 +445,35 @@ def draw_figure(
                     name=f"{ticker} Close",
                     marker=dict(color=color_swatch[color_idx]),  # "red"),
                 ),
-                secondary_y=False,
+                row=1,
+                col=1,
             )
             color_idx += 1
             if color_idx == len(color_swatch):
                 color_idx = 0
+
+        if draw_ma:
+            # SMA and EMA lines
+            sma = go.Scatter(
+                x=ticker_data["Date"],
+                y=talib.SMA(ticker_data["Close"], ma_smooth_periods),
+                name=f"{ticker} SMA_{ma_smooth_periods}",
+                marker=dict(color=color_swatch[color_idx]),  # "red"),
+            )
+            color_idx += 1
+            if color_idx == len(color_swatch):
+                color_idx = 0
+            ema = go.Scatter(
+                x=ticker_data["Date"],
+                y=talib.EMA(ticker_data["Close"], ma_smooth_periods),
+                name=f"{ticker} EMA_{ma_smooth_periods}",
+                marker=dict(color=color_swatch[color_idx]),  # "red"),
+            )
+            color_idx += 1
+            if color_idx == len(color_swatch):
+                color_idx = 0
+            fig.add_trace(sma, row=1, col=1)
+            fig.add_trace(ema, row=1, col=1)
 
         if draw_volume:
             # Volume bar plot
@@ -455,7 +484,8 @@ def draw_figure(
                     name=f"{ticker} Volume",
                     marker=dict(color=color_swatch[color_idx]),  # "teal"),
                 ),
-                secondary_y=True,
+                row=2,
+                col=1,
             )
             color_idx += 1
             if color_idx == len(color_swatch):
@@ -466,12 +496,176 @@ def draw_figure(
         title_text=f"{', '.join(data['Ticker'].unique())}{' - Standard Scaled' if scale_price else ''}"
     )
 
-    # Set x-axis title
-    fig.update_xaxes(title_text="Timestamp")
+    # Set y-axes titles
+    fig.update_yaxes(title_text=f"<b>price</b>", row=1, col=1)
+    fig.update_yaxes(title_text=f"<b>volume</b>", row=2, col=1)
+
+    # Draw range slider
+    fig.update_xaxes(rangeslider={"visible": True}, row=1, col=1)
+    fig.update_xaxes(rangeslider={"visible": True}, row=2, col=1)
+    fig.update_xaxes(rangeslider_thickness=0.1)
+
+    # Total height
+    fig.update_layout(height=800)
+
+    return fig
+
+
+def draw_waterfall_chart(
+    data: pd.DataFrame,
+    scale_price: bool = False,
+):
+    """
+    Draw a Plotly Waterfall Figure with tickers data
+    """
+    # Create Figure
+    fig = go.Figure()
+
+    # Add traces for each ticker
+    for ticker in data["Ticker"].unique():
+        ticker_data = data[data["Ticker"] == ticker].reset_index(drop=True)
+
+        if scale_price:
+            # ~StandardScaler
+            close_mean = ticker_data["Close"].mean()
+            close_std = ticker_data["Close"].std()
+            ticker_data["Close"] = (ticker_data["Close"] - close_mean) / close_std
+
+        fig.add_trace(
+            go.Waterfall(
+                name=f"{ticker}",
+                orientation="v",
+                x=ticker_data["Date"],
+                textposition="auto",
+                y=ticker_data["Close"].diff(),
+                text=round(ticker_data["Close"].diff(), 2),
+                connector={"line": {"color": "#b20710"}},
+                increasing={"marker": {"color": "green"}},
+                decreasing={"marker": {"color": "red"}},
+            )
+        )
+
+    # Add figure title
+    fig.update_layout(
+        title_text=f"{', '.join(data['Ticker'].unique())}{' - Standard Scaled' if scale_price else ''} Waterfall"
+    )
 
     # Set y-axes titles
-    fig.update_yaxes(title_text=f"price", secondary_y=False)
-    fig.update_yaxes(title_text=f"volume", secondary_y=True)
+    fig.update_yaxes(title_text=f"<b>close price change</b>")
+
+    # Draw range slider
+    fig.update_xaxes(rangeslider={"visible": True})
+    fig.update_xaxes(rangeslider_thickness=0.1)
+
+    # Total height
+    fig.update_layout(height=800)
+
+    return fig
+
+
+def draw_stochastic_oscillator_chart(
+    data: pd.DataFrame,
+    scale_price: bool = False,
+    fastk_period: int = 14,
+    slowd_period: int = 3,
+):
+    """
+    Draw a Plotly Figure with tickers data and Stochastic oscillators
+    """
+    # Create Figure
+    fig = make_subplots(rows=2, shared_xaxes=True, row_heights=[0.5, 0.5])
+    # fig = go.Figure()
+
+    # Add traces for each ticker
+    for ticker in data["Ticker"].unique():
+        ticker_data = data[data["Ticker"] == ticker].reset_index(drop=True)
+
+        if scale_price:
+            # ~StandardScaler
+            close_mean = ticker_data["Close"].mean()
+            close_std = ticker_data["Close"].std()
+            ticker_data["Close"] = (ticker_data["Close"] - close_mean) / close_std
+            ticker_data["High"] = (ticker_data["High"] - close_mean) / close_std
+            ticker_data["Low"] = (ticker_data["Low"] - close_mean) / close_std
+
+        # Calculate stochastic oscillators
+        stoch_k, stoch_d = talib.STOCH(
+            ticker_data["High"],
+            ticker_data["Low"],
+            ticker_data["Close"],
+            fastk_period=fastk_period,
+            slowd_period=slowd_period,
+        )
+        stoch_k.name = "STOCH_K"
+        stoch_d.name = "STOCH_D"
+        ticker_data = pd.concat([ticker_data, stoch_k, stoch_d], axis=1)
+
+        # Close price
+        fig.add_trace(
+            go.Scatter(
+                x=ticker_data["Date"],
+                y=ticker_data["Close"],
+                name=f"{ticker} Close",
+                line=dict(color="blue"),
+            ),
+            row=1,
+            col=1,
+        )
+
+        # Stochastic oscillator lines
+        fig.add_trace(
+            go.Scatter(
+                x=ticker_data["Date"],
+                y=ticker_data["STOCH_K"],
+                name=f"Slow %K {fastk_period}",
+                line=dict(color="red"),
+            ),
+            row=2,
+            col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=ticker_data["Date"],
+                y=ticker_data["STOCH_D"],
+                name=f"Slow %D {slowd_period}",
+                line=dict(color="green"),
+            ),
+            row=2,
+            col=1,
+        )
+
+        # Overbought / oversold lines
+        fig.add_hline(
+            y=80,
+            line_dash="dot",
+            line_color="gray",
+            annotation_text="Overbought (80)",
+            row=2,
+            col=1,
+        )
+        fig.add_hline(
+            y=20,
+            line_dash="dot",
+            line_color="gray",
+            annotation_text="Oversold (20)",
+            row=2,
+            col=1,
+        )
+
+    # Add figure title
+    fig.update_layout(
+        title_text=f"{', '.join(data['Ticker'].unique())}{' - Standard Scaled' if scale_price else ''} with Stochastic Ostillator"
+    )
+
+    # Set y-axes titles
+    fig.update_yaxes(title_text=f"<b>close price</b>")
+
+    # Draw range slider
+    fig.update_xaxes(rangeslider={"visible": True})
+    fig.update_xaxes(rangeslider_thickness=0.1)
+
+    # Total height
+    fig.update_layout(height=800)
 
     return fig
 
@@ -485,6 +679,12 @@ def get_data_and_draw_figure(
     draw_close: bool = True,
     draw_volume: bool = True,
     scale_price: bool = False,
+    draw_ma: bool = True,
+    ma_smooth_periods: int = 3,
+    draw_waterfall: bool = True,
+    draw_stochastic: bool = True,
+    fastk_period: int = 14,
+    slowd_period: int = 3,
 ):
     """
     Get data from local cache (optionally - update), draw Plotly chart and return it
@@ -497,12 +697,265 @@ def get_data_and_draw_figure(
         interval=interval,
         update_cache=update_cache,
     )
-    # Generage chart
+
+    # Generate price & volume chart
     fig = draw_figure(
         data=data,
         draw_close=draw_close,
         draw_volume=draw_volume,
         scale_price=scale_price,
+        draw_ma=draw_ma,
+        ma_smooth_periods=ma_smooth_periods,
     )
 
-    return fig
+    # Generage waterfall chart
+    if draw_waterfall:
+        fig_waterfall = draw_waterfall_chart(data=data, scale_price=scale_price)
+    else:
+        fig_waterfall = None
+
+    # Generate Stochastic Oscillator chart
+    if draw_stochastic:
+        fig_stochastic = draw_stochastic_oscillator_chart(
+            data=data,
+            scale_price=scale_price,
+            fastk_period=fastk_period,
+            slowd_period=slowd_period,
+        )
+    else:
+        fig_stochastic = None
+
+    return {"main": fig, "waterfall": fig_waterfall, "stochastic": fig_stochastic}
+
+
+def train_test_valid_split(
+    ticker_data: pd.DataFrame,
+    train_start: Optional[str],
+    train_end: str,
+    test_end: str,
+    valid_end: str,
+    drop_leaky: bool = True,
+) -> tuple[
+    pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
+]:
+    """
+    Split ticker data to training, testing and validation datasets
+    """
+    logger.info("Splitting ticker data to train/test/validation parts")
+    # 0. Make sure that Date is ascending. Also reset index
+    ticker_data["Date"] = pd.to_datetime(ticker_data["Date"])
+    ticker_data = ticker_data.sort_values(by=["Date"], ascending=True).reset_index(
+        drop=True
+    )
+
+    # 1. Drop leaky columns
+    try:
+        ticker_data.drop(columns=["Ticker"], inplace=True)
+    except:
+        pass
+    if drop_leaky:
+        for col in ["Open", "Low", "High", "Volume"]:
+            try:
+                ticker_data.drop(columns=col, inplace=True)
+            except:
+                pass
+
+    # 2. Perform train/test/valid split based on 'Date'
+    # we don't need anything after validation end
+    ticker_data = ticker_data[ticker_data["Date"] < valid_end].reset_index(drop=True)
+    # in case train_start is defined - cut it
+    if train_start is not None:
+        ticker_data = ticker_data[ticker_data["Date"] >= train_start].reset_index(
+            drop=True
+        )
+    # Train parts
+    X_train = (
+        ticker_data[ticker_data["Date"] < train_end]
+        .drop(columns=["Close"])
+        .reset_index(drop=True)
+    )
+    y_train = ticker_data[ticker_data["Date"] < train_end]["Close"].reset_index(
+        drop=True
+    )
+    # Test parts
+    X_test = (
+        ticker_data[
+            (ticker_data["Date"] >= train_end) & (ticker_data["Date"] < test_end)
+        ]
+        .drop(columns=["Close"])
+        .reset_index(drop=True)
+    )
+    y_test = ticker_data[
+        (ticker_data["Date"] >= train_end) & (ticker_data["Date"] < test_end)
+    ]["Close"].reset_index(drop=True)
+    # Validation parts
+    X_val = (
+        ticker_data[ticker_data["Date"] >= test_end]
+        .drop(columns=["Close"])
+        .reset_index(drop=True)
+    )
+    y_val = ticker_data[ticker_data["Date"] >= test_end]["Close"].reset_index(drop=True)
+
+    return X_train, y_train, X_test, y_test, X_val, y_val
+
+
+def transform_for_backtesting(
+    y_test: pd.DataFrame, X_test: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Transform data after train/test split to the format fit for Backtesing library
+    """
+    bt_df = pd.concat([X_test, y_test], axis=1)
+    # bt_df["Open"] = 0
+    # bt_df["High"] = 0
+    # bt_df["Low"] = 0
+    bt_df["Date"] = pd.to_datetime(bt_df["Date"])
+    bt_df.set_index("Date", inplace=True)
+    return bt_df
+
+
+def backtest_strategy(
+    strategy_class, y_test: pd.Series, X_test: pd.DataFrame, strategy_params: dict
+):
+    """
+    Perform a backtest of strategy_class with params on test dataset
+    """
+    # Initialize Backtest object
+    bt = Backtest(
+        transform_for_backtesting(y_test=y_test, X_test=X_test),
+        strategy_class,
+        cash=100000,
+        commission=0.002,
+        exclusive_orders=True,
+    )
+    # Run, using selected Strategy parameters
+    stats = bt.run(**strategy_params)
+
+    return stats, bt
+
+
+def get_best_strategy_params(
+    strategy_class,
+    y_test: pd.Series,
+    X_test: pd.DataFrame,
+    strategy_params_options: dict,
+    kpi: str = "Return [%]",
+):
+    """
+    Iterate over combinations of strategy_params_options for strategy_class
+    Perform backtesting experiment for each of them, and return best (on "Return [%]") params and performance
+    """
+    # Variables to hold best params
+    best_params = None
+    best_performance = -float("inf")
+    best_fig = None
+
+    for param_option in itertools.product(*strategy_params_options.values()):
+        # Generate strategy params from options
+        strategy_params = dict(zip(strategy_params_options.keys(), param_option))
+        # logger.info(f"Testing with params: {strategy_params}")
+
+        # Perform backtest
+        stats, bt = backtest_strategy(
+            strategy_class,
+            y_test=y_test,
+            X_test=X_test,
+            strategy_params=strategy_params,
+        )
+
+        # Get key performance indicator among all metrics
+        performance = stats[kpi]
+
+        # Check if it's better than others
+        if performance > best_performance:
+            best_performance = performance
+            best_params = strategy_params
+            # Create a Bokeh figure
+            best_fig = bt.plot(superimpose=False, open_browser=False)
+
+    logger.info(f"Best Performance: {best_performance}")
+    logger.info(f"Best Parameters: {best_params}")
+
+    return best_params, best_performance, best_fig
+
+
+def get_best_strategy(
+    full_strategy_test_list: dict,
+    y_test: pd.Series,
+    X_test: pd.DataFrame,
+    kpi: str = "Return [%]",
+):
+    # A dictionary to return all bests for strategies
+    full_test_summary = {}
+
+    # Variables to hold best params
+    best_strategy_class = None
+    best_params = None
+    best_performance = -float("inf")
+
+    for e in full_strategy_test_list:
+        logger.info("= = = = = = = = = = = = = = = = = = = = = = = =")
+        logger.info(f"Searching best params for {e['strategy_type']}...")
+        class_params, class_performance, class_test_fig = get_best_strategy_params(
+            e["strategy_class"],
+            y_test=y_test,
+            X_test=X_test,
+            strategy_params_options=e["strategy_params_options"],
+            kpi=kpi,
+        )
+
+        full_test_summary[e["strategy_type"]] = {
+            "strategy_class": e["strategy_class"],
+            "params": class_params,
+            "performance": class_performance,
+            "test_fig": class_test_fig,
+        }
+
+        # Check if it's better than others
+        if class_performance > best_performance:
+            best_performance = class_performance
+            best_params = class_params
+            best_strategy_class = e["strategy_class"]
+
+    logger.info("= = = = = = = = = = = = = = = = = = = = = = = =")
+    logger.info(f"Best Strategy Class: {str(best_strategy_class)}")
+    logger.info(f"Best Performance: {best_performance}")
+    logger.info(f"Best Parameters: {best_params}")
+    logger.info("= = = = = = = = = = = = = = = = = = = = = = = =")
+
+    return best_strategy_class, best_params, best_performance, full_test_summary
+
+
+def validate_model_performances(
+    y_val: pd.Series,
+    X_val: pd.DataFrame,
+    full_test_summary: dict,
+    kpi: str = "Return[%]",
+):
+    """
+    Validate best model hyperparameters (base on Test dataset) on Validation dataset
+    """
+    result = {}
+    for strategy_type, strategy_test_result in full_test_summary.items():
+        logger.info(f"Validating {strategy_type}...")
+        # Perform a Backtest on Validation dataset
+        bt = Backtest(
+            transform_for_backtesting(y_val, X_val),
+            strategy_test_result["strategy_class"],
+            cash=100000,
+            commission=0.002,
+            exclusive_orders=True,
+        )
+        stats = bt.run(**strategy_test_result["params"])
+        val_kpi = stats[kpi]
+        logger.info(
+            f"{kpi}: TEST - {strategy_test_result['performance']} | VAL - {val_kpi}"
+        )
+
+        # Create a Bokeh figure
+        fig = bt.plot(superimpose=False, open_browser=False)
+
+        # Save to output
+        result[strategy_type] = {"val_performance": val_kpi, "val_figure": fig}
+
+    return result

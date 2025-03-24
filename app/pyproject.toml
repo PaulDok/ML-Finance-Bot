@@ -8,18 +8,23 @@ readme = "README.md"
 packages = [{include = "ml_finance_bot"}]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.9.7 || >3.9.7,<3.10.0"
+python = "^3.10"
+ipykernel = "^6.29.5"
+black = "^25.1.0"
+isort = "^6.0.1"
 pydantic = "^2.10.6"
-pydantic-settings = "^2.8.0"
+pydantic-settings = "^2.8.1"
 urllib3 = "<2.0"
-numpy = "^1.21.0"
-pandas = "^1.4.3"
-yfinance = "^0.2.54"
+numpy = "^2.2.4"
+pandas = "^2.2.3"
+yfinance = "^0.2.55"
 lxml = "^5.3.1"
-sqlalchemy = "^2.0.38"
-streamlit = "^1.42.2"
-plotly = "^6.0.0"
+sqlalchemy = "^2.0.39"
+streamlit = "^1.43.2"
+plotly = "^6.0.1"
 nbformat = "^5.10.4"
+backtesting = "^0.6.3"
+streamlit-bokeh = "^3.7.0"
 
 
 [build-system]

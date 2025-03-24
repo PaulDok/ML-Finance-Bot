@@ -7,15 +7,8 @@ Dependencies are managed using poetry
 In order to set up the environment run:
 
 ```
-conda create -n <env_name> python=3.9
+conda create -n <env_name> python=3.10
 conda activate <env_name>
-
-# To work in jupyter notebooks
-conda install ipykernel
-
-# Linter for development - is not necessary for replication
-conda install black
-conda install isort
 
 # Poetry for more complex dependency management
 conda install poetry
@@ -23,7 +16,12 @@ conda install poetry
 # Install project dependencies
 cd app
 poetry install
+
+# TA-Lib (TODO: can it be done via poetry?)
+conda install conda-forge::ta-lib
 ```
+
+
 
 # Run interactive UI in browser
 In order to run a Streamlit page after environment is set up, run:
