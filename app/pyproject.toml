@@ -25,6 +25,7 @@ plotly = "^6.0.1"
 nbformat = "^5.10.4"
 backtesting = "^0.6.3"
 streamlit-bokeh = "^3.7.0"
+scipy = "^1.15.2"
 
 
 [build-system]
