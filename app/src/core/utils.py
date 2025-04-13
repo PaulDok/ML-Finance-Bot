@@ -12,6 +12,7 @@ import talib
 import yfinance as yf
 from backtesting import Backtest
 from plotly.subplots import make_subplots
+from scipy.stats import zscore
 from sqlalchemy import Engine, create_engine
 from src.core import config
 
@@ -959,3 +960,74 @@ def validate_model_performances(
         result[strategy_type] = {"val_performance": val_kpi, "val_figure": fig}
 
     return result
+
+
+def detect_anomalies_z_diff(df: pd.DataFrame, column: str):
+    df_copy = df.copy()
+    df_copy["Z-score"] = zscore(df_copy[column].diff().fillna(0))
+    anomalies_idx = df_copy[abs(df_copy["Z-score"]) > 1.5].index
+    return anomalies_idx
+
+
+def clean_anomalies_and_fill_gaps(
+    data: pd.DataFrame, end_dt: str, interval: str
+) -> pd.DataFrame:
+    """
+    Data preparation function:
+    1) Detect anomalies (separately per Ticker and all its value columns), remove them;
+    2) Fill missing values (both from missing in raw data and from anomaly detection step)
+    """
+    # 1) Detect anomalies separately for each ticker and for each column, replace them with NANs
+    logger.info("Detecting and removing anomalies...")
+    outlier_free_data = []
+    for ticker in data["Ticker"].unique():
+        data_ticker = data[data["Ticker"] == ticker]
+
+        for column in ["Open", "Low", "High", "Close", "Volume"]:
+            column_anomalies = detect_anomalies_z_diff(data_ticker, column)
+            data_ticker.loc[column_anomalies, column] = None
+
+        outlier_free_data.append(data_ticker)
+    data = pd.concat(outlier_free_data, axis=0).reset_index(drop=True)
+
+    # 2) Fill missing values
+    logger.info("Filling missing values...")
+    gap_filled_data = []
+    for ticker in data["Ticker"].unique():
+        data_ticker = data[data["Ticker"] == ticker]
+
+        # Make sure we have end of requested time period
+        data_ticker["Date"] = data_ticker["Date"].astype("datetime64[ns]")
+        if pd.to_datetime(end_dt) not in data_ticker["Date"].values:
+            # Append a row with end date
+            data_ticker = pd.concat(
+                [
+                    data_ticker,
+                    pd.DataFrame({"Date": pd.to_datetime(end_dt)}, index=[0]),
+                ],
+                axis=0,
+            ).reset_index(drop=True)
+
+        # Time resampling based on 'Date' field
+        data_ticker["Date"] = data_ticker["Date"].astype("datetime64[ns]")
+        data_ticker.set_index("Date", inplace=True)
+        data_ticker = data_ticker.resample(interval).asfreq()
+
+        # Ticker is always same, ffill/bfill it
+        data_ticker["Ticker"] = data_ticker["Ticker"].ffill().bfill()
+        # Linear interpolation for value columns
+        for column in ["Open", "Low", "High", "Close", "Volume"]:
+            data_ticker[column] = data_ticker[column].interpolate(
+                "linear"
+            )  # it does ffill as well, but run next steps just in case
+            data_ticker[column] = data_ticker[column].ffill().bfill()
+
+        # Reset index to make output shape same as input
+        data_ticker = data_ticker.reset_index(drop=False)
+
+        gap_filled_data.append(data_ticker)
+    data = pd.concat(gap_filled_data, axis=0).reset_index(drop=True)
+
+    logger.info("Data cleaned from anomalies. Filled missing values in it.")
+
+    return data
