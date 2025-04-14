@@ -14,7 +14,7 @@ from backtesting import Backtest
 from plotly.subplots import make_subplots
 from scipy.stats import zscore
 from sqlalchemy import Engine, create_engine
-from src.core import config
+from src.core import config, features
 
 logger = logging.getLogger()
 
@@ -124,6 +124,34 @@ def create_table_for_interval(interval: str) -> None:
     connection.close()
 
 
+def create_table_for_interval_preprocessed(interval: str) -> None:
+    """
+    Create a table to store tickers history after cleaning and feature engineering, name dependent on INTERVAL
+    """
+    # NOTE: table name cannot start with digit -> reverse in such cases
+    table_name = interval if interval[0].isalpha() else interval[::-1]
+    table_name = f"{table_name}_preprocessed"
+    table_create_query = f"""
+    CREATE TABLE IF NOT EXISTS {table_name} (
+    Date TEXT,
+    Ticker TEXT NOT NULL,
+    Open REAL,
+    Low REAL,
+    High REAL,
+    Close REAL,
+    Volume REAL,
+    features TEXT
+    )
+    """
+    # Connect and run query
+    connection = get_sqlite_connection()
+    cursor = connection.cursor()
+    cursor.execute(table_create_query)
+    # commit and close
+    connection.commit()
+    connection.close()
+
+
 def delete_ticker_data_from_sqlite(
     tickers: Union[str, list[str]],
     interval: str,
@@ -156,13 +184,15 @@ def delete_ticker_data_from_sqlite(
         conn.commit()
 
 
-def upload_data_to_sqlite(data: pd.DataFrame, interval: str) -> None:
+def upload_data_to_sqlite(data: pd.DataFrame, interval: str, table_suffix=None) -> None:
     """
     Append data to SQLite database
     """
     engine = get_sqlite_engine()
     with engine.connect() as conn:
         table_name = interval if interval[0].isalpha() else interval[::-1]
+        if table_suffix is not None:
+            table_name = f"{table_name}{table_suffix}"
         data.to_sql(table_name, conn, if_exists="append", index=False)
         conn.commit()
     engine.dispose()
@@ -347,6 +377,10 @@ def update_tickers_data(
         upload_data_to_sqlite(lack_later_tickers_history, interval)
 
     logger.info("Data in caching DB updated")
+
+    logger.info("= = = Preprocessing pipeline started... = = =")
+    preprocess_data(tickers, start_dt, end_dt, interval)
+    logger.info("= = = Preprocessing complete! = = =")
 
 
 def get_history(
@@ -1031,3 +1065,107 @@ def clean_anomalies_and_fill_gaps(
     logger.info("Data cleaned from anomalies. Filled missing values in it.")
 
     return data
+
+
+def filter_new_data_only(
+    data: pd.DataFrame, interval: str, tickers: list[str]
+) -> pd.DataFrame:
+    """
+    Check which relevant data (after preprocessing) already exists in DB, and filter only the new part
+    """
+    # Form an SQL statement
+    table_name = interval if interval[0].isalpha() else interval[::-1]
+    table_name = f"{table_name}_preprocessed"
+    query = f"""
+    SELECT
+        Date,
+        Ticker,
+        1 AS IS_IN_DB
+    FROM {table_name}
+    """
+
+    # Run query on DB
+    conn = get_sqlite_connection()
+    preprocessed_already_existing = pd.read_sql(query, con=conn)
+    conn.close()
+
+    # Filter tickers
+    preprocessed_already_existing = preprocessed_already_existing[
+        preprocessed_already_existing["Ticker"].isin(tickers)
+    ].reset_index(drop=True)
+
+    # Format datetime columns
+    data["Date"] = pd.to_datetime(data["Date"])
+    preprocessed_already_existing["Date"] = pd.to_datetime(
+        preprocessed_already_existing["Date"]
+    )
+
+    # Merge with input data
+    data = pd.merge(
+        data, preprocessed_already_existing, on=["Date", "Ticker"], how="outer"
+    )
+
+    # New data has NANs in 'IS_IN_DB' column, filter it
+    data = (
+        data[data["IS_IN_DB"].isna()].reset_index(drop=True).drop(columns=["IS_IN_DB"])
+    )
+
+    return data
+
+
+def preprocess_data(
+    tickers: list[str], start_dt: Optional[str], end_dt: Optional[str], interval: str
+) -> None:
+    """
+    Perform preprocessing of data, from DB table with cached raw to the one with preprocessed state
+    """
+    # 1) Get data from DB
+    logger.info(f"Getting raw data from DB...")
+    data = get_history(
+        tickers=tickers,
+        start=start_dt,  # TODO: при первом запуске правильнее всё же обработать весь объем истории
+        end=end_dt,  # TODO: при первом запуске правильнее всё же обработать весь объем истории
+        interval=interval,
+        update_cache=False,  # мы только что обновили данные в utils.update_tickers_data()
+    )
+    logger.info(f"Input Data in DB: {data.shape=}, {data.isna().sum().sum():,d} NaNs")
+
+    # 2) Clean it
+    logger.info("Cleaning data from anomalies and filling missing values...")
+    data = clean_anomalies_and_fill_gaps(data, end_dt=end_dt, interval=interval)
+    logger.info(
+        f"Cleaned from anomalies and filled gaps: {data.shape=}, {data.isna().sum().sum():,d} NaNs"
+    )
+
+    # 3) Feature engineering
+    logger.info("Performing feature engineering...")
+    data, all_feature_columns = features.add_features(data)
+    logger.info(
+        f"Feature engineering complete: {data.shape=}, {data.isna().sum().sum():,d} NaNs"
+    )
+    logger.info(f"{len(all_feature_columns):,d} features in total")
+
+    # 4) Create a table, if it doesn't exist yet
+    logger.info(
+        f"Making sure table with processed data in database for {interval=} exists"
+    )
+    create_table_for_interval_preprocessed(interval)
+
+    # 5) Filter only new dates / tickers
+    data = filter_new_data_only(data, interval, tickers)
+    logger.info(
+        f"Filtered only new data: {data.shape=}, {data.isna().sum().sum():,d} NaNs"
+    )
+
+    # 6) Convert features into a single JSON column
+    data["features"] = data[all_feature_columns].apply(lambda x: x.to_json(), axis=1)
+    data.drop(columns=all_feature_columns, inplace=True)
+    logger.info(
+        f"Features converted in a single JSON column: {data.shape=}, {data.isna().sum().sum():,d} NaNs"
+    )
+
+    # 7) Upload to DB
+    logger.info("Uploading to DB...")
+    upload_data_to_sqlite(data, interval, table_suffix="_preprocessed")
+
+    logger.info("Preprocessing complete, new data uploaded!")
