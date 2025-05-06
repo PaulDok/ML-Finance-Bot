@@ -1,5 +1,6 @@
 import gc
 import itertools
+import json
 import logging
 import sqlite3
 from datetime import datetime, timedelta
@@ -435,6 +436,71 @@ def get_history(
     logger.info(f"Got history of shape {data.shape}, {data.isna().sum().sum():,d} NaNs")
 
     return data
+
+
+def get_preprocessed_history(
+    tickers: Union[str, list[str]] = "BTC-USD",
+    start: str = "2024-03-30",
+    end: str = "2024-06-02",
+    interval: str = "1d",
+) -> tuple[pd.DataFrame, list[str]]:
+    """
+    Get preprocessed history from local cache DB, parse features from JSON field and return DataFrame and features as list
+    """
+    logger.info("Getting preprocessed history from local cache DB...")
+
+    # Form an SQL statement
+    table_name = interval if interval[0].isalpha() else interval[::-1]
+    table_name = f"{table_name}_preprocessed"
+    ticker_filter = (
+        "('" + "', '".join(tickers) + "')"
+        if (type(tickers) is list)
+        else f"('{tickers}')"
+    )
+
+    select_query = f"""
+    SELECT
+        Date,
+        Ticker,
+        Open,
+        Low,
+        High,
+        Close,
+        Volume,
+        features
+    FROM {table_name}
+    WHERE 
+        1 = 1
+        AND Ticker IN {ticker_filter}
+    """
+    if start is not None:
+        select_query += f" AND Date >= '{start}'"
+    if end is not None:
+        select_query += f" AND Date <= '{end}'"
+
+    # Run on DB
+    with get_sqlite_connection() as conn:
+        # logger.info(select_query)
+        data = pd.read_sql(select_query, con=conn)
+
+    # Sort by Date
+    data.sort_values(by="Date", ascending=True, inplace=True)
+    logger.info(f"Got history of shape {data.shape}, {data.isna().sum().sum():,d} NaNs")
+
+    # Parse features from 'features' JSON field
+    features_df = data["features"].apply(lambda x: pd.Series(json.loads(x)))
+    features = features_df.columns.to_list()
+    data = (
+        pd.concat([data, features_df], axis=1)
+        .drop(columns=["features"])
+        .reset_index(drop=True)
+    )
+    del features_df
+    logger.info(
+        f"Parsed features from JSON to separate columns: {data.shape}, {data.isna().sum().sum():,d} NaNs"
+    )
+
+    return data, features
 
 
 def draw_figure(
