@@ -26,6 +26,7 @@ nbformat = "^5.10.4"
 backtesting = "^0.6.3"
 streamlit-bokeh = "^3.7.0"
 scipy = "^1.15.2"
+scikit-learn = "^1.6.1"
 
 
 [build-system]
