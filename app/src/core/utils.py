@@ -829,6 +829,29 @@ def get_data_and_draw_figure(
     return {"main": fig, "waterfall": fig_waterfall, "stochastic": fig_stochastic}
 
 
+def add_target(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add a binary 'target' column
+    1 - next tick close is higher (== BULLISH)
+    0 - next tick close is lower (== BEARISH)
+    """
+    logger.info("Adding binary target...")
+    data_with_target = []
+    for ticker in data["Ticker"].unique():
+        ticker_data = data[data["Ticker"] == ticker].reset_index(drop=True)
+        ticker_data["close_next"] = ticker_data["Close"].shift(-1)
+        ticker_data["target"] = (
+            ticker_data["close_next"] > ticker_data["Close"]
+        ).astype(int)
+        ticker_data = ticker_data.drop(columns=["close_next"])
+        ticker_data = ticker_data.dropna(subset=["target"])
+        data_with_target.append(ticker_data)
+    data = pd.concat(data_with_target, axis=0).reset_index(drop=True)
+    logger.info(f"Target added: {data.shape}, {data.isna().sum().sum():,d} NaNs")
+
+    return data
+
+
 def train_test_valid_split(
     ticker_data: pd.DataFrame,
     train_start: Optional[str],
@@ -836,6 +859,7 @@ def train_test_valid_split(
     test_end: str,
     valid_end: str,
     drop_leaky: bool = True,
+    target_col: str = "Close",
 ) -> tuple[
     pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
 ]:
@@ -855,7 +879,9 @@ def train_test_valid_split(
     except:
         pass
     if drop_leaky:
-        for col in ["Open", "Low", "High", "Volume"]:
+        leaky_columns = ["Open", "Low", "High", "Close", "Volume"]
+        leaky_columns = [col for col in leaky_columns if col != target_col]
+        for col in leaky_columns:
             try:
                 ticker_data.drop(columns=col, inplace=True)
             except:
@@ -872,10 +898,10 @@ def train_test_valid_split(
     # Train parts
     X_train = (
         ticker_data[ticker_data["Date"] < train_end]
-        .drop(columns=["Close"])
+        .drop(columns=[target_col])
         .reset_index(drop=True)
     )
-    y_train = ticker_data[ticker_data["Date"] < train_end]["Close"].reset_index(
+    y_train = ticker_data[ticker_data["Date"] < train_end][target_col].reset_index(
         drop=True
     )
     # Test parts
@@ -883,19 +909,21 @@ def train_test_valid_split(
         ticker_data[
             (ticker_data["Date"] >= train_end) & (ticker_data["Date"] < test_end)
         ]
-        .drop(columns=["Close"])
+        .drop(columns=[target_col])
         .reset_index(drop=True)
     )
     y_test = ticker_data[
         (ticker_data["Date"] >= train_end) & (ticker_data["Date"] < test_end)
-    ]["Close"].reset_index(drop=True)
+    ][target_col].reset_index(drop=True)
     # Validation parts
     X_val = (
         ticker_data[ticker_data["Date"] >= test_end]
-        .drop(columns=["Close"])
+        .drop(columns=[target_col])
         .reset_index(drop=True)
     )
-    y_val = ticker_data[ticker_data["Date"] >= test_end]["Close"].reset_index(drop=True)
+    y_val = ticker_data[ticker_data["Date"] >= test_end][target_col].reset_index(
+        drop=True
+    )
 
     return X_train, y_train, X_test, y_test, X_val, y_val
 
