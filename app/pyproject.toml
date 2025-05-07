@@ -28,6 +28,7 @@ streamlit-bokeh = "^3.7.0"
 scipy = "^1.15.2"
 scikit-learn = "^1.6.1"
 catboost = "^1.2.8"
+optuna = "^4.3.0"
 
 
 [build-system]
