@@ -3,7 +3,10 @@ import os
 import sys
 
 import streamlit as st
+from catboost import CatBoostClassifier
+from sklearn.linear_model import LogisticRegression
 from src.core import utils
+from src.models.training_loop import ml_model_strategy_training_loop
 from src.strategy.bb_strategy import BollingerBandsStrategy
 from src.strategy.macd_strategy import MACDStrategy
 from src.strategy.sma_cross_strategy import SmaCross
@@ -117,6 +120,56 @@ def backtest_and_tune_callback() -> None:
     st.session_state["strategy_backtesting_result"] = overall_result
 
 
+def ml_model_strategy_training_loop_callback() -> None:
+    """
+    Run tests using ML strategies
+    """
+    # Filter model options
+    model_options = {
+        CatBoostClassifier: {
+            "int": {
+                "iterations": {"low": 100, "high": 1000},
+                "depth": {"low": 3, "high": 10},
+            },
+            "loguniform": {
+                "learning_rate": {"low": 0.01, "high": 0.3},
+                "l2_leaf_reg": {"low": 1e-3, "high": 10},
+            },
+            "float": {
+                "bagging_temperature": {"low": 0, "high": 1},
+                "rsm": {"low": 0.5, "high": 1.0},
+                "subsample": {"low": 0.5, "high": 1.0},
+            },
+            "const": {"random_seed": 42, "verbose": 0, "early_stopping_rounds": 50},
+        },
+        LogisticRegression: {
+            "loguniform": {
+                "l1_ratio": {"low": 0.01, "high": 0.7},
+            },
+            "const": {"solver": "saga", "penalty": "elasticnet"},
+            "use_eval_set": False,
+        },
+    }
+    model_options = {
+        k: v
+        for k, v in model_options.items()
+        if k.__qualname__ in st.session_state["classic_ml_models_ms"]
+    }
+
+    # Call training loop function. We don't need a result - it should be updated in DB
+    _ = ml_model_strategy_training_loop(
+        tickers=st.session_state["classic_ml_tickers_ms"],
+        interval=st.session_state["classic_ml_interval_sb"],
+        train_start=st.session_state["classic_ml_train_start_dt"].strftime("%Y-%m-%d"),
+        train_end=st.session_state["classic_ml_train_end_dt"].strftime("%Y-%m-%d"),
+        test_end=st.session_state["classic_ml_test_end_dt"].strftime("%Y-%m-%d"),
+        valid_end=st.session_state["classic_ml_validation_end_dt"].strftime("%Y-%m-%d"),
+        model_options=model_options,
+    )
+
+    st.toast("ML Model training and validation loop complete!", icon="🎉")
+
+
 # ~ ~ ~ UI ~ ~ ~
 # Make sure to use full screen width
 st.set_page_config(layout="wide")
@@ -124,8 +177,13 @@ st.set_page_config(layout="wide")
 st.title("ML Finance homework demo page")
 
 # Organize logical blocks as tabs
-tab_download, tab_history_chart, tab_backtesting = st.tabs(
-    ["Download to cache", "📈 History visualization", "Strategy backtesting"]
+tab_download, tab_history_chart, tab_backtesting, tab_classic_ml = st.tabs(
+    [
+        "Download to cache",
+        "📈 History visualization",
+        "Strategy backtesting",
+        "Classic ML",
+    ]
 )
 
 with tab_download:
@@ -369,3 +427,65 @@ with tab_backtesting:
                                 use_container_width=True,
                                 key=f"{strategy_type}_val_fig",
                             )
+
+with tab_classic_ml:
+    st.header(
+        "ML-based Strategy Backtesting, model tuning and experiment result review"
+    )
+    with st.container(border=True):
+        st.write("**Please update local cache before running experiment**")
+
+        # Container with controls
+        with st.container(border=True):
+            # Filters
+            col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
+            with col1:
+                st.selectbox(
+                    label="Interval",
+                    options=["1d"],
+                    key="classic_ml_interval_sb",
+                )
+            with col2:
+                st.multiselect(
+                    label="Tickers",
+                    options=utils.CACHED_CONFIG.TICKERS,
+                    default=["BTC-USD", "AAPL", "^GSPC"],
+                    key="classic_ml_tickers_ms",
+                )
+            with col3:
+                st.date_input(
+                    label="Train start",
+                    key="classic_ml_train_start_dt",
+                    value="2020-01-01",
+                )
+            with col4:
+                st.date_input(
+                    label="Train end", key="classic_ml_train_end_dt", value="2024-10-01"
+                )
+            with col5:
+                st.date_input(
+                    label="Test end", key="classic_ml_test_end_dt", value="2025-01-01"
+                )
+            with col6:
+                st.date_input(
+                    label="Validation end",
+                    key="classic_ml_validation_end_dt",
+                    value="2025-04-01",
+                )
+            with col7:
+                st.multiselect(
+                    label="ML model types",
+                    options=["LogisticRegression", "CatBoostClassifier"],
+                    default=["LogisticRegression", "CatBoostClassifier"],
+                    key="classic_ml_models_ms",
+                )
+
+            # Button to launch experiments
+            st.button(
+                label="Run ML Model selection, tuning and validation loop",
+                use_container_width=True,
+                on_click=ml_model_strategy_training_loop_callback,
+            )
+
+        # Container with experiment results
+        # TODO
