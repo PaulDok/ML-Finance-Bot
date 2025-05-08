@@ -176,6 +176,7 @@ class ModelOptimizer:
         # Return the model and metrics
         return (
             model,
+            best_params,
             (train_roc_auc, test_roc_auc, val_roc_auc),
             (train_metrics_table, test_metrics_table, val_metrics_table),
         )
