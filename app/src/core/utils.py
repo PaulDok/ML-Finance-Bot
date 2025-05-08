@@ -548,6 +548,28 @@ def get_preprocessed_history(
     return data, features
 
 
+def get_experiment_results() -> pd.DataFrame:
+    """
+    Get all data from 'experiment_results' table
+    """
+    logger.info("Reading experiment result data...")
+
+    select_query = """
+    SELECT *
+    FROM experiment_results
+    """
+
+    # Run on DB
+    try:
+        with get_sqlite_connection() as conn:
+            data = pd.read_sql(select_query, con=conn)
+    except:
+        # e.g. table does not exist yet
+        return None
+
+    return data
+
+
 def draw_figure(
     data: pd.DataFrame,
     draw_close: bool = True,
