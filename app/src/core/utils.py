@@ -1,5 +1,6 @@
 import gc
 import itertools
+import json
 import logging
 import sqlite3
 from datetime import datetime, timedelta
@@ -152,6 +153,40 @@ def create_table_for_interval_preprocessed(interval: str) -> None:
     connection.close()
 
 
+def create_experiment_results_table() -> None:
+    """
+    Create a table to store experiment results
+    """
+    table_create_query = f"""
+    CREATE TABLE IF NOT EXISTS experiment_results (
+    Experiment_ID TEXT,
+    Ticker TEXT NOT NULL,
+    Interval TEXT,
+    Type TEXT,
+    START_DT TEXT,
+    END_DT TEXT,
+    Model TEXT,
+    Model_params TEXT,
+    Cutoff REAL,
+    Precision REAL,
+    Recall REAL,
+    Accuracy REAL,
+    F1_Score REAL,
+    ROC_AUC REAL,
+    Return_pct REAL,
+    Win_Rate_pct REAL,
+    Num_Trades REAL
+    )
+    """
+    # Connect and run query
+    connection = get_sqlite_connection()
+    cursor = connection.cursor()
+    cursor.execute(table_create_query)
+    # commit and close
+    connection.commit()
+    connection.close()
+
+
 def delete_ticker_data_from_sqlite(
     tickers: Union[str, list[str]],
     interval: str,
@@ -194,6 +229,17 @@ def upload_data_to_sqlite(data: pd.DataFrame, interval: str, table_suffix=None) 
         if table_suffix is not None:
             table_name = f"{table_name}{table_suffix}"
         data.to_sql(table_name, conn, if_exists="append", index=False)
+        conn.commit()
+    engine.dispose()
+
+
+def upload_experiment_results_to_sqlite(result: pd.DataFrame) -> None:
+    """
+    Append experiment results data to SQLite database
+    """
+    engine = get_sqlite_engine()
+    with engine.connect() as conn:
+        result.to_sql("experiment_results", conn, if_exists="append", index=False)
         conn.commit()
     engine.dispose()
 
@@ -433,6 +479,93 @@ def get_history(
     # Sort by Date
     data.sort_values(by="Date", ascending=True, inplace=True)
     logger.info(f"Got history of shape {data.shape}, {data.isna().sum().sum():,d} NaNs")
+
+    return data
+
+
+def get_preprocessed_history(
+    tickers: Union[str, list[str]] = "BTC-USD",
+    start: str = "2024-03-30",
+    end: str = "2024-06-02",
+    interval: str = "1d",
+) -> tuple[pd.DataFrame, list[str]]:
+    """
+    Get preprocessed history from local cache DB, parse features from JSON field and return DataFrame and features as list
+    """
+    logger.info("Getting preprocessed history from local cache DB...")
+
+    # Form an SQL statement
+    table_name = interval if interval[0].isalpha() else interval[::-1]
+    table_name = f"{table_name}_preprocessed"
+    ticker_filter = (
+        "('" + "', '".join(tickers) + "')"
+        if (type(tickers) is list)
+        else f"('{tickers}')"
+    )
+
+    select_query = f"""
+    SELECT
+        Date,
+        Ticker,
+        Open,
+        Low,
+        High,
+        Close,
+        Volume,
+        features
+    FROM {table_name}
+    WHERE 
+        1 = 1
+        AND Ticker IN {ticker_filter}
+    """
+    if start is not None:
+        select_query += f" AND Date >= '{start}'"
+    if end is not None:
+        select_query += f" AND Date <= '{end}'"
+
+    # Run on DB
+    with get_sqlite_connection() as conn:
+        # logger.info(select_query)
+        data = pd.read_sql(select_query, con=conn)
+
+    # Sort by Date
+    data.sort_values(by="Date", ascending=True, inplace=True)
+    logger.info(f"Got history of shape {data.shape}, {data.isna().sum().sum():,d} NaNs")
+
+    # Parse features from 'features' JSON field
+    features_df = data["features"].apply(lambda x: pd.Series(json.loads(x)))
+    features = features_df.columns.to_list()
+    data = (
+        pd.concat([data, features_df], axis=1)
+        .drop(columns=["features"])
+        .reset_index(drop=True)
+    )
+    del features_df
+    logger.info(
+        f"Parsed features from JSON to separate columns: {data.shape}, {data.isna().sum().sum():,d} NaNs"
+    )
+
+    return data, features
+
+
+def get_experiment_results() -> pd.DataFrame:
+    """
+    Get all data from 'experiment_results' table
+    """
+    logger.info("Reading experiment result data...")
+
+    select_query = """
+    SELECT *
+    FROM experiment_results
+    """
+
+    # Run on DB
+    try:
+        with get_sqlite_connection() as conn:
+            data = pd.read_sql(select_query, con=conn)
+    except:
+        # e.g. table does not exist yet
+        return None
 
     return data
 
@@ -763,6 +896,29 @@ def get_data_and_draw_figure(
     return {"main": fig, "waterfall": fig_waterfall, "stochastic": fig_stochastic}
 
 
+def add_target(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add a binary 'target' column
+    1 - next tick close is higher (== BULLISH)
+    0 - next tick close is lower (== BEARISH)
+    """
+    logger.info("Adding binary target...")
+    data_with_target = []
+    for ticker in data["Ticker"].unique():
+        ticker_data = data[data["Ticker"] == ticker].reset_index(drop=True)
+        ticker_data["close_next"] = ticker_data["Close"].shift(-1)
+        ticker_data["target"] = (
+            ticker_data["close_next"] > ticker_data["Close"]
+        ).astype(int)
+        ticker_data = ticker_data.drop(columns=["close_next"])
+        ticker_data = ticker_data.dropna(subset=["target"])
+        data_with_target.append(ticker_data)
+    data = pd.concat(data_with_target, axis=0).reset_index(drop=True)
+    logger.info(f"Target added: {data.shape}, {data.isna().sum().sum():,d} NaNs")
+
+    return data
+
+
 def train_test_valid_split(
     ticker_data: pd.DataFrame,
     train_start: Optional[str],
@@ -770,6 +926,7 @@ def train_test_valid_split(
     test_end: str,
     valid_end: str,
     drop_leaky: bool = True,
+    target_col: str = "Close",
 ) -> tuple[
     pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
 ]:
@@ -789,7 +946,9 @@ def train_test_valid_split(
     except:
         pass
     if drop_leaky:
-        for col in ["Open", "Low", "High", "Volume"]:
+        leaky_columns = ["Open", "Low", "High", "Close", "Volume"]
+        leaky_columns = [col for col in leaky_columns if col != target_col]
+        for col in leaky_columns:
             try:
                 ticker_data.drop(columns=col, inplace=True)
             except:
@@ -806,10 +965,10 @@ def train_test_valid_split(
     # Train parts
     X_train = (
         ticker_data[ticker_data["Date"] < train_end]
-        .drop(columns=["Close"])
+        .drop(columns=[target_col])
         .reset_index(drop=True)
     )
-    y_train = ticker_data[ticker_data["Date"] < train_end]["Close"].reset_index(
+    y_train = ticker_data[ticker_data["Date"] < train_end][target_col].reset_index(
         drop=True
     )
     # Test parts
@@ -817,19 +976,21 @@ def train_test_valid_split(
         ticker_data[
             (ticker_data["Date"] >= train_end) & (ticker_data["Date"] < test_end)
         ]
-        .drop(columns=["Close"])
+        .drop(columns=[target_col])
         .reset_index(drop=True)
     )
     y_test = ticker_data[
         (ticker_data["Date"] >= train_end) & (ticker_data["Date"] < test_end)
-    ]["Close"].reset_index(drop=True)
+    ][target_col].reset_index(drop=True)
     # Validation parts
     X_val = (
         ticker_data[ticker_data["Date"] >= test_end]
-        .drop(columns=["Close"])
+        .drop(columns=[target_col])
         .reset_index(drop=True)
     )
-    y_val = ticker_data[ticker_data["Date"] >= test_end]["Close"].reset_index(drop=True)
+    y_val = ticker_data[ticker_data["Date"] >= test_end][target_col].reset_index(
+        drop=True
+    )
 
     return X_train, y_train, X_test, y_test, X_val, y_val
 
