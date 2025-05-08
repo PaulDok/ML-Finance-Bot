@@ -153,6 +153,40 @@ def create_table_for_interval_preprocessed(interval: str) -> None:
     connection.close()
 
 
+def create_experiment_results_table() -> None:
+    """
+    Create a table to store experiment results
+    """
+    table_create_query = f"""
+    CREATE TABLE IF NOT EXISTS experiment_results (
+    Experiment_ID TEXT,
+    Ticker TEXT NOT NULL,
+    Interval TEXT,
+    Type TEXT,
+    START_DT TEXT,
+    END_DT TEXT,
+    Model TEXT,
+    Model_params TEXT,
+    Cutoff REAL,
+    Precision REAL,
+    Recall REAL,
+    Accuracy REAL,
+    F1_Score REAL,
+    ROC_AUC REAL,
+    Return_pct REAL,
+    Win_Rate_pct REAL,
+    Num_Trades REAL
+    )
+    """
+    # Connect and run query
+    connection = get_sqlite_connection()
+    cursor = connection.cursor()
+    cursor.execute(table_create_query)
+    # commit and close
+    connection.commit()
+    connection.close()
+
+
 def delete_ticker_data_from_sqlite(
     tickers: Union[str, list[str]],
     interval: str,
@@ -195,6 +229,17 @@ def upload_data_to_sqlite(data: pd.DataFrame, interval: str, table_suffix=None) 
         if table_suffix is not None:
             table_name = f"{table_name}{table_suffix}"
         data.to_sql(table_name, conn, if_exists="append", index=False)
+        conn.commit()
+    engine.dispose()
+
+
+def upload_experiment_results_to_sqlite(result: pd.DataFrame) -> None:
+    """
+    Append experiment results data to SQLite database
+    """
+    engine = get_sqlite_engine()
+    with engine.connect() as conn:
+        result.to_sql("experiment_results", conn, if_exists="append", index=False)
         conn.commit()
     engine.dispose()
 

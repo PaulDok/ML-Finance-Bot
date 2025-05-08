@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
@@ -88,6 +89,7 @@ def ml_model_strategy_training_loop(
             # Run backtesting and collect all metrics
             logger.info("Running backtesting and collecting all metrics..")
             all_parts_metrics = []
+            experiment_id = str(uuid.uuid1())
             for (
                 X_data,
                 X_scaled_data,
@@ -147,6 +149,7 @@ def ml_model_strategy_training_loop(
                 # Add general data
                 general_data = pd.DataFrame(
                     {
+                        "Experiment_ID": experiment_id,
                         "Ticker": ticker,
                         "Interval": interval,
                         "Type": run_type,
@@ -166,10 +169,25 @@ def ml_model_strategy_training_loop(
                 drop=True
             )
 
-            # TODO сохранить это в БД
+            # Save to DB
+            logger.info("Saving results to DB...")
+            # Make sure the table exists
+            utils.create_experiment_results_table()
+            # Rename columns to valid names for DB
+            all_parts_metrics.columns = [
+                col.replace("-", "_")
+                .replace("#", "Num")
+                .replace(" ", "_")
+                .replace("[%]", "pct")
+                for col in all_parts_metrics.columns
+            ]
+            # Upload experiment results to DB
+            utils.upload_experiment_results_to_sqlite(all_parts_metrics)
+
             grand_result.append(all_parts_metrics)
 
     grand_result = pd.concat(grand_result, axis=0).reset_index(drop=True)
+    logger.info("ML Model Strategy training loop complete!")
     return grand_result
 
 
@@ -198,4 +216,4 @@ def backtest_ml_strategy(
     )
 
     # Return most
-    return stats[["Return [%]", "Win Rate [%]", "# Trades", "Win Rate [%]"]]
+    return stats[["Return [%]", "Win Rate [%]", "# Trades"]]
