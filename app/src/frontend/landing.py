@@ -13,6 +13,7 @@ from pandas.api.types import (
 )
 from sklearn.linear_model import LogisticRegression
 from src.core import utils
+from src.models.cnn_model import CNNModel
 from src.models.training_loop import ml_model_strategy_training_loop
 from src.strategy.bb_strategy import BollingerBandsStrategy
 from src.strategy.macd_strategy import MACDStrategy
@@ -156,6 +157,14 @@ def ml_model_strategy_training_loop_callback() -> None:
             "const": {"solver": "saga", "penalty": "elasticnet"},
             "use_eval_set": False,
         },
+        CNNModel: {
+            "int": {
+                "window_size": {"low": 5, "high": 60},
+                "batch_size": {"low": 4, "high": 128},
+                "num_epochs": {"low": 5, "high": 50},
+            },
+            "float": {"lr": {"low": 0.0005, "high": 0.01}},
+        },
     }
     model_options = {
         k: v
@@ -266,7 +275,7 @@ tab_download, tab_history_chart, tab_backtesting, tab_classic_ml = st.tabs(
         "Download to cache",
         "📈 History visualization",
         "Strategy backtesting",
-        "Classic ML",
+        "ML models (Classic + NN)",
     ]
 )
 
@@ -559,8 +568,8 @@ with tab_classic_ml:
             with col7:
                 st.multiselect(
                     label="ML model types",
-                    options=["LogisticRegression", "CatBoostClassifier"],
-                    default=["LogisticRegression", "CatBoostClassifier"],
+                    options=["LogisticRegression", "CatBoostClassifier", "CNNModel"],
+                    default=["LogisticRegression", "CatBoostClassifier", "CNNModel"],
                     key="classic_ml_models_ms",
                 )
 
