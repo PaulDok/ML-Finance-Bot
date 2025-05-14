@@ -9,9 +9,9 @@ from torch.utils.data import DataLoader, TensorDataset
 logger = logging.getLogger()
 
 
-class LSTMModel:
+class GRUModel:
     """
-    Wrapper for a PyTorch LSTM model for next step prediction
+    Wrapper for a PyTorch GRU model for next step prediction
     """
 
     def __init__(
@@ -80,7 +80,7 @@ class LSTMModel:
         dataloader = self.convert_to_dataloader(X_raw=X_train, y_raw=y_train)
         # Initialize model
         logger.info("Initializing model...")
-        self.model = StockLSTM(
+        self.model = StockGRU(
             n_features=X_train.shape[1],
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,
@@ -110,19 +110,19 @@ class LSTMModel:
         return predictions
 
 
-class StockLSTM(nn.Module):
+class StockGRU(nn.Module):
     """
-    Neural Network with LSTM core
+    Neural Network with GRU core
     """
 
     def __init__(self, n_features, hidden_size=64, num_layers=2):
-        super(StockLSTM, self).__init__()
-        self.lstm = nn.LSTM(n_features, hidden_size, num_layers, batch_first=True)
+        super(StockGRU, self).__init__()
+        self.gru = nn.GRU(n_features, hidden_size, num_layers, batch_first=True)
         self.linear = nn.Linear(hidden_size, 2)
         self.sm = nn.Softmax(1)
 
     def forward(self, x):
-        _, (h_n, _) = self.lstm(x)
+        _, h_n = self.gru(x)
         x = self.linear(h_n[-1])
         probabilities = self.sm(x)
         return probabilities
