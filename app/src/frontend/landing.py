@@ -14,6 +14,7 @@ from pandas.api.types import (
 from sklearn.linear_model import LogisticRegression
 from src.core import utils
 from src.models.cnn_model import CNNModel
+from src.models.lstm_model import LSTMModel
 from src.models.training_loop import ml_model_strategy_training_loop
 from src.strategy.bb_strategy import BollingerBandsStrategy
 from src.strategy.macd_strategy import MACDStrategy
@@ -161,6 +162,16 @@ def ml_model_strategy_training_loop_callback() -> None:
             "int": {
                 "window_size": {"low": 5, "high": 60},
                 "batch_size": {"low": 4, "high": 128},
+                "num_epochs": {"low": 5, "high": 50},
+            },
+            "float": {"lr": {"low": 0.0005, "high": 0.01}},
+        },
+        LSTMModel: {
+            "int": {
+                "window_size": {"low": 5, "high": 60},
+                "hidden_size": {"low": 8, "high": 128},
+                "num_layers": {"low": 1, "high": 3},
+                "batch_size": {"low": 4, "high": 64},
                 "num_epochs": {"low": 5, "high": 50},
             },
             "float": {"lr": {"low": 0.0005, "high": 0.01}},
@@ -568,8 +579,18 @@ with tab_classic_ml:
             with col7:
                 st.multiselect(
                     label="ML model types",
-                    options=["LogisticRegression", "CatBoostClassifier", "CNNModel"],
-                    default=["LogisticRegression", "CatBoostClassifier", "CNNModel"],
+                    options=[
+                        "LogisticRegression",
+                        "CatBoostClassifier",
+                        "CNNModel",
+                        "LSTMModel",
+                    ],
+                    default=[
+                        "LogisticRegression",
+                        "CatBoostClassifier",
+                        "CNNModel",
+                        "LSTMModel",
+                    ],
                     key="classic_ml_models_ms",
                 )
 
