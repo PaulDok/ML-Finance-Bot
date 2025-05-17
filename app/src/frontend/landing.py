@@ -17,6 +17,7 @@ from src.models.cnn_model import CNNModel
 from src.models.gru_model import GRUModel
 from src.models.lstm_model import LSTMModel
 from src.models.training_loop import ml_model_strategy_training_loop
+from src.models.transformer_model import TransformerModel
 from src.strategy.bb_strategy import BollingerBandsStrategy
 from src.strategy.macd_strategy import MACDStrategy
 from src.strategy.sma_cross_strategy import SmaCross
@@ -186,6 +187,14 @@ def ml_model_strategy_training_loop_callback() -> None:
                 "num_epochs": {"low": 5, "high": 50},
             },
             "float": {"lr": {"low": 0.0005, "high": 0.01}},
+        },
+        TransformerModel: {
+            "int": {
+                "input_window": {"low": 5, "high": 30},
+                "batch_size": {"low": 50, "high": 500},
+                "num_epochs": {"low": 50, "high": 300},
+            },
+            "float": {"lr": {"low": 0.00001, "high": 0.001}},
         },
     }
     model_options = {
@@ -596,6 +605,7 @@ with tab_classic_ml:
                         "CNNModel",
                         "LSTMModel",
                         "GRUModel",
+                        "TransformerModel",
                     ],
                     default=[
                         "LogisticRegression",
@@ -603,6 +613,7 @@ with tab_classic_ml:
                         "CNNModel",
                         "LSTMModel",
                         "GRUModel",
+                        "TransformerModel",
                     ],
                     key="classic_ml_models_ms",
                 )
