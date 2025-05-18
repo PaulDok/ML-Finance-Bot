@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 
 logger = logging.getLogger()
+torch.classes.__path__ = []
 
 
 class TransformerModel:
@@ -93,7 +94,7 @@ class TransformerModel:
             self.optimizer.step()
 
             total_loss += loss.item()
-            log_interval = int(len(train_data) / self.batch_size / 5)
+            log_interval = max(1, int(len(train_data) / self.batch_size / 5))
             if batch % log_interval == 0 and batch > 0:
                 cur_loss = total_loss / log_interval
                 elapsed = time.time() - start_time
