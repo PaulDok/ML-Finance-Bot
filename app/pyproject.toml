@@ -29,6 +29,7 @@ scipy = "^1.15.2"
 scikit-learn = "^1.6.1"
 catboost = "^1.2.8"
 optuna = "^4.3.0"
+torch = "^2.7.0"
 
 
 [build-system]
