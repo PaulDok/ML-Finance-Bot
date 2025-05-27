@@ -14,6 +14,7 @@ from pandas.api.types import (
 from sklearn.linear_model import LogisticRegression
 from src.core import utils
 from src.models.cnn_model import CNNModel
+from src.models.ensemble_model import EnsembleModel
 from src.models.gru_model import GRUModel
 from src.models.lstm_model import LSTMModel
 from src.models.training_loop import ml_model_strategy_training_loop
@@ -195,6 +196,29 @@ def ml_model_strategy_training_loop_callback() -> None:
                 "num_epochs": {"low": 50, "high": 300},
             },
             "float": {"lr": {"low": 0.00001, "high": 0.001}},
+        },
+        EnsembleModel: {
+            "int": {
+                "cb_iterations": {"low": 100, "high": 1000},
+                "cb_depth": {"low": 3, "high": 10},
+            },
+            "loguniform": {
+                "lr_l1_ratio": {"low": 0.01, "high": 0.7},
+                "cb_lr": {"low": 0.01, "high": 0.3},
+                "cb_l2_leaf_reg": {"low": 1e-3, "high": 10},
+            },
+            "float": {
+                "cb_bagging_temperature": {"low": 0, "high": 1},
+                "cb_rsm": {"low": 0.5, "high": 1.0},
+                "cb_subsample": {"low": 0.5, "high": 1.0},
+            },
+            "const": {
+                "lr_solver": "saga",
+                "lr_penalty": "elasticnet",
+                "cb_random_seed": 42,
+                "cb_early_stopping_rounds": 50,
+            },
+            "use_eval_set": False,
         },
     }
     model_options = {
@@ -606,6 +630,7 @@ with tab_classic_ml:
                         "LSTMModel",
                         "GRUModel",
                         "TransformerModel",
+                        "EnsembleModel",
                     ],
                     default=[
                         "LogisticRegression",
@@ -614,6 +639,7 @@ with tab_classic_ml:
                         "LSTMModel",
                         "GRUModel",
                         "TransformerModel",
+                        "EnsembleModel",
                     ],
                     key="classic_ml_models_ms",
                 )
