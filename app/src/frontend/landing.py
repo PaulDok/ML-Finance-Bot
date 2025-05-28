@@ -201,6 +201,11 @@ def ml_model_strategy_training_loop_callback() -> None:
             "int": {
                 "cb_iterations": {"low": 100, "high": 1000},
                 "cb_depth": {"low": 3, "high": 10},
+                "lstm_window_size": {"low": 5, "high": 60},
+                "lstm_hidden_size": {"low": 8, "high": 128},
+                "lstm_num_layers": {"low": 1, "high": 3},
+                "lstm_batch_size": {"low": 4, "high": 64},
+                "lstm_num_epochs": {"low": 5, "high": 50},
             },
             "loguniform": {
                 "lr_l1_ratio": {"low": 0.01, "high": 0.7},
@@ -211,6 +216,7 @@ def ml_model_strategy_training_loop_callback() -> None:
                 "cb_bagging_temperature": {"low": 0, "high": 1},
                 "cb_rsm": {"low": 0.5, "high": 1.0},
                 "cb_subsample": {"low": 0.5, "high": 1.0},
+                "lstm_lr": {"low": 0.0005, "high": 0.01},
             },
             "const": {
                 "lr_solver": "saga",
