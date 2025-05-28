@@ -4,12 +4,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.base import BaseEstimator, ClassifierMixin
 from torch.utils.data import DataLoader, TensorDataset
 
 logger = logging.getLogger()
 
 
-class LSTMModel:
+class LSTMModel(ClassifierMixin, BaseEstimator):
     """
     Wrapper for a PyTorch LSTM model for next step prediction
     """
